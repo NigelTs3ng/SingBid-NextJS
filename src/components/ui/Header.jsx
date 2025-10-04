@@ -55,7 +55,7 @@ const Header = () => {
     <div className="flex items-center space-x-3">
       <div className="relative">
         <Image
-          src="/assets/images/photo_2025-10-01_01-36-53-1759253847011.jpg"
+          src="/assets/images/hammerLogo.png"
           alt="SingBid Logo"
           className="w-10 h-10 rounded-lg object-cover"
         />

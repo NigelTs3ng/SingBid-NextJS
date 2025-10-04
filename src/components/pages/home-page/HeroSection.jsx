@@ -107,7 +107,7 @@ const HeroSection = () => {
 
   return (
     <div className="relative bg-gradient-to-br from-red-50 via-red-25 to-pink-50 rounded-2xl overflow-hidden mb-12 singbid-shadow-lg">
-      <div className="relative h-[500px] sm:h-[550px] lg:h-[600px]">
+      <div className="relative h-[500px] sm:h-[650px] lg:h-[750px] xl:h-[800px]">
         {/* Background Image */}
         <div className="absolute inset-0">
           <Image
@@ -119,27 +119,27 @@ const HeroSection = () => {
         </div>
 
         {/* Content */}
-        <div className="relative z-10 h-full flex items-center">
+        <div className="relative z-10 h-full flex items-center py-12 lg:py-16 xl:py-20">
           <div className="container mx-auto px-4">
             <div className="max-w-2xl text-white">
               {/* Category Badge */}
-              <div className="inline-flex items-center px-2 py-1 sm:px-4 sm:py-2 singbid-gradient backdrop-blur-sm rounded-full text-xs sm:text-sm font-medium text-white mb-2 sm:mb-4 singbid-shadow">
+              <div className="inline-flex items-center px-2 py-1 sm:px-4 sm:py-2 singbid-gradient backdrop-blur-sm rounded-full text-xs sm:text-sm font-medium text-white mb-4 sm:mb-6 singbid-shadow">
                 <Icon name="Star" size={12} className="mr-1.5 sm:mr-2" />
                 Featured Auction
               </div>
 
               {/* Title */}
-              <h1 className="text-xl sm:text-3xl lg:text-4xl font-bold mb-2 sm:mb-4 leading-tight">
+              <h1 className="text-xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold mb-4 sm:mb-6 lg:mb-8 leading-tight">
                 {currentAuction?.title}
               </h1>
 
               {/* Description */}
-              <p className="text-sm sm:text-base lg:text-lg text-red-100 mb-3 sm:mb-6 leading-relaxed line-clamp-2">
+              <p className="text-sm sm:text-base lg:text-lg xl:text-xl text-red-100 mb-6 sm:mb-8 lg:mb-10 leading-relaxed line-clamp-2">
                 {currentAuction?.description}
               </p>
 
               {/* Auction Stats - Visible on all screens */}
-              <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-3 sm:mb-6">
+              <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:gap-6 mb-6 sm:mb-8 lg:mb-10">
                 <div className="bg-white/15 backdrop-blur-sm rounded-lg p-2.5 sm:p-4 border border-white/20">
                   <div className="text-base sm:text-2xl lg:text-3xl font-bold text-white leading-none mb-1">
                     S${currentAuction?.currentBid?.toLocaleString()}
@@ -165,7 +165,7 @@ const HeroSection = () => {
               </div>
 
               {/* Seller Info - More compact on mobile */}
-              <div className="flex items-center space-x-2 sm:space-x-4 mb-3 sm:mb-6">
+              <div className="flex items-center space-x-2 sm:space-x-4 mb-6 sm:mb-8 lg:mb-10">
                 <div className="w-8 h-8 sm:w-10 sm:h-10 singbid-gradient rounded-full flex items-center justify-center singbid-shadow flex-shrink-0">
                   <Icon name="User" size={14} color="white" />
                 </div>
@@ -189,7 +189,7 @@ const HeroSection = () => {
               </div>
 
               {/* Action Buttons - More compact on mobile */}
-              <div className="flex flex-col sm:flex-row gap-2 sm:space-x-4">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 lg:gap-6 mb-8 sm:mb-0">
                 <Button
                   variant="default"
                   size="lg"
