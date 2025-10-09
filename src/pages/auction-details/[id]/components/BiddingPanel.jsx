@@ -42,17 +42,25 @@ const BiddingPanel = ({ auction, currentBid, onPlaceBid, isAuthenticated }) => {
   };
 
   const handlePlaceBid = async () => {
+    console.log('🎯 BIDDING PANEL - handlePlaceBid called!');
+    console.log('📊 BiddingPanel state:', { bidAmount, minBidAmount, currentBid });
+    
     const error = validateBid(bidAmount);
     if (error) {
+      console.log('❌ Bid validation failed:', error);
       setBidError(error);
       return;
     }
 
+    console.log('✅ Bid validation passed, calling onPlaceBid...');
     setIsPlacingBid(true);
     try {
+      console.log('🚀 Calling onPlaceBid with amount:', parseFloat(bidAmount));
       await onPlaceBid(parseFloat(bidAmount));
+      console.log('✅ onPlaceBid completed successfully');
       setBidAmount((parseFloat(bidAmount) + 1)?.toString());
     } catch (error) {
+      console.error('❌ onPlaceBid failed:', error);
       setBidError('Failed to place bid. Please try again.');
     } finally {
       setIsPlacingBid(false);

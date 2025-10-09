@@ -1,9 +1,9 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useParams } from 'next/navigation';
 import { useAuth } from '../../../contexts/AuthContext';
-import { auctionService } from '../../../lib/services';
+import { auctionService, realtimeService } from '../../../lib/services';
 import Header from '../../../components/ui/Header';
 import Breadcrumb from '../../../components/ui/Breadcrumb';
 import ImageGallery from '../../../components/pages/auction-details/ImageGallery';
@@ -20,57 +20,122 @@ const AuctionDetails = () => {
   const router = useRouter();
   const params = useParams();
   const { isAuthenticated } = useAuth();
-  const auctionId = params.id;
+  
+  // Better handling of auction ID with multiple fallback methods
+  const getAuctionId = () => {
+    // First try params.id
+    if (params?.id) return params.id;
+    
+    // Fallback: extract from current URL path
+    if (typeof window !== 'undefined') {
+      const pathSegments = window.location.pathname.split('/');
+      const idIndex = pathSegments.indexOf('auction-details');
+      if (idIndex !== -1 && pathSegments[idIndex + 1]) {
+        return pathSegments[idIndex + 1];
+      }
+    }
+    
+    return null;
+  };
+  
+  const auctionId = getAuctionId();
   
   const [auction, setAuction] = useState(null);
   const [currentBid, setCurrentBid] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastBidCheck, setLastBidCheck] = useState(null);
 
-  useEffect(() => {
-    const fetchAuctionData = async () => {
-      if (!auctionId) return;
+  // Fetch auction data with refresh capability
+  const fetchAuctionData = useCallback(async (showRefreshing = false) => {
+    if (!auctionId) return;
+    
+    if (showRefreshing) setRefreshing(true);
+    if (!auction) setLoading(true);
+    setError(null);
+    
+    try {
+      const auctionData = await auctionService.getAuctionById(auctionId);
+      setAuction(auctionData);
+      setCurrentBid(auctionData.currentBid);
+      setLastBidCheck(new Date().toISOString());
+    } catch (err) {
+      console.error('Error fetching auction:', err);
+      setError('Failed to load auction details');
       
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const auctionData = await auctionService.getAuctionById(auctionId);
-        setAuction(auctionData);
-        setCurrentBid(auctionData.currentBid);
-      } catch (err) {
-        console.error('Error fetching auction:', err);
-        setError('Failed to load auction details');
-        
-        // If auction not found, redirect to 404
-        if (err.message?.includes('not found')) {
-          router.push('/404');
-          return;
-        }
-      } finally {
-        setLoading(false);
+      if (err.message?.includes('not found')) {
+        router.push('/404');
+        return;
       }
+    } finally {
+      setLoading(false);
+      if (showRefreshing) setRefreshing(false);
+    }
+  }, [auctionId, router, auction]);
+
+  // Initial load
+  useEffect(() => {
+    fetchAuctionData();
+  }, [fetchAuctionData]);
+
+  // Polling for bid updates when realtime is disabled
+  useEffect(() => {
+    if (!auction?.id) return;
+
+    let pollInterval;
+    
+    const startPolling = () => {
+      pollInterval = setInterval(async () => {
+        try {
+          const updates = await realtimeService.pollAuctionUpdates(auction.id, lastBidCheck);
+          if (updates && updates.length > 0) {
+            // Refresh auction data to get latest bids and current bid
+            await fetchAuctionData(false);
+          }
+        } catch (error) {
+          console.error('Error polling bid updates:', error);
+        }
+      }, 5000); // Poll every 5 seconds for auction details page
     };
 
-    fetchAuctionData();
-  }, [auctionId, router]);
+    startPolling();
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [auction?.id, lastBidCheck, fetchAuctionData]);
 
   const handlePlaceBid = async (amount) => {
-    if (!auction?.id) return Promise.reject('No auction available');
+    console.log('🔥 AUCTION DETAILS - handlePlaceBid called with amount:', amount);
+    console.log('🔍 Auction state:', { auctionId: auction?.id, isAuthenticated });
+    
+    if (!auction?.id) {
+      console.log('❌ No auction available');
+      return Promise.reject('No auction available');
+    }
     if (!isAuthenticated) {
+      console.log('❌ User not authenticated, redirecting to signin');
       router.push('/auth/signin');
       return Promise.reject('Please sign in to place a bid');
     }
     
     try {
+      console.log('🚀 Calling auctionService.placeBid...');
       await auctionService.placeBid(auction.id, amount);
+      console.log('✅ auctionService.placeBid completed successfully');
       setCurrentBid(amount);
       
       // Refresh auction data to get updated bid history
-      const updatedAuction = await auctionService.getAuctionById(auctionId);
-      setAuction(updatedAuction);
+      // Add a small delay to allow database to process
+      setTimeout(() => {
+        fetchAuctionData(false);
+      }, 1000);
     } catch (err) {
+      console.error('❌ auctionService.placeBid failed:', err);
       throw new Error(err.message || 'Failed to place bid');
     }
   };
@@ -89,6 +154,10 @@ const AuctionDetails = () => {
         resolve();
       }, 500);
     });
+  };
+
+  const handleRefresh = () => {
+    fetchAuctionData(true);
   };
 
   // Loading state
@@ -158,24 +227,51 @@ const AuctionDetails = () => {
     );
   }
 
-  // ...existing JSX with auction data...
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto px-4 py-6">
-        <Breadcrumb customItems={[
-          { label: 'Home', path: '/home-page' },
-          { label: 'Auctions', path: '/auction-listings' },
-          { label: auction.title, isActive: true }
-        ]} />
+        <div className="flex items-center justify-between mb-6">
+          <Breadcrumb customItems={[
+            { label: 'Home', path: '/home-page' },
+            { label: 'Auctions', path: '/auction-listings' },
+            { label: auction?.title || 'Loading...', isActive: true }
+          ]} />
+          
+          {/* Refresh Button - Shows when realtime is disabled */}
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center space-x-2 px-3 py-2 text-sm bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+            >
+              <Icon 
+                name="RefreshCw" 
+                size={16} 
+                className={`${refreshing ? 'animate-spin' : ''} text-muted-foreground`} 
+              />
+              <span className="text-muted-foreground">
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </span>
+            </button>
+            
+            {/* Live indicator */}
+            <div className="flex items-center space-x-2 px-3 py-2 bg-muted/50 rounded-lg">
+              <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
+              <span className="text-xs text-muted-foreground">
+                Polling updates
+              </span>
+            </div>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
           <div className="space-y-6">
-            <ImageGallery images={auction.images} title={auction.title} />
+            <ImageGallery images={auction?.images} title={auction?.title} />
             
             <ExpandableSection title="Description" defaultExpanded>
               <div className="prose prose-sm max-w-none text-muted-foreground">
-                <p className="whitespace-pre-wrap">{auction.description}</p>
+                <p className="whitespace-pre-wrap">{auction?.description}</p>
               </div>
             </ExpandableSection>
           </div>
@@ -183,7 +279,7 @@ const AuctionDetails = () => {
           <div className="space-y-6">
             <div className="sticky top-6">
               <AuctionInfo auction={auction} />
-              <CountdownTimer endTime={auction.endTime} />
+              <CountdownTimer endTime={auction?.endTime} />
               <BiddingPanel
                 auction={auction}
                 currentBid={currentBid}
@@ -191,7 +287,7 @@ const AuctionDetails = () => {
                 isAuthenticated={isAuthenticated}
               />
               <SellerInfo
-                seller={auction.seller}
+                seller={auction?.seller}
                 isFollowing={isFollowing}
                 onFollow={handleFollow}
                 isAuthenticated={isAuthenticated}
@@ -202,7 +298,7 @@ const AuctionDetails = () => {
         </div>
 
         <div className="mt-12 space-y-8">
-          <BidHistory bids={auction.bids} />
+          <BidHistory bids={auction?.bids} />
         </div>
       </main>
     </div>

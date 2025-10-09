@@ -6,12 +6,17 @@ const ImageGallery = ({ images, title }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
 
+  // Ensure we have a valid images array
+  const validImages = Array.isArray(images) && images.length > 0 
+    ? images 
+    : ["https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop"];
+
   const nextImage = () => {
-    setCurrentImageIndex((prev) => (prev + 1) % images?.length);
+    setCurrentImageIndex((prev) => (prev + 1) % validImages?.length);
   };
 
   const prevImage = () => {
-    setCurrentImageIndex((prev) => (prev - 1 + images?.length) % images?.length);
+    setCurrentImageIndex((prev) => (prev - 1 + validImages?.length) % validImages?.length);
   };
 
   const selectImage = (index) => {
@@ -27,7 +32,7 @@ const ImageGallery = ({ images, title }) => {
           onClick={() => setIsZoomed(!isZoomed)}
         >
           <Image
-            src={images?.[currentImageIndex]}
+            src={validImages?.[currentImageIndex]}
             alt={`${title} - Image ${currentImageIndex + 1}`}
             className={`w-full transition-transform duration-300 ${
               isZoomed ? 'scale-150 transform-gpu' : 'scale-100'
@@ -36,7 +41,7 @@ const ImageGallery = ({ images, title }) => {
           />
           
           {/* Navigation Arrows */}
-          {images?.length > 1 && (
+          {validImages?.length > 1 && (
             <>
               <button
                 onClick={(e) => {
@@ -60,9 +65,9 @@ const ImageGallery = ({ images, title }) => {
           )}
 
           {/* Image Counter */}
-          {images?.length > 1 && (
+          {validImages?.length > 1 && (
             <div className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-sm">
-              {currentImageIndex + 1} / {images?.length}
+              {currentImageIndex + 1} / {validImages?.length}
             </div>
           )}
 
@@ -73,9 +78,9 @@ const ImageGallery = ({ images, title }) => {
         </div>
       </div>
       {/* Thumbnail Gallery */}
-      {images?.length > 1 && (
+      {validImages?.length > 1 && (
         <div className="flex space-x-2 overflow-x-auto pb-2">
-          {images?.map((image, index) => (
+          {validImages?.map((image, index) => (
             <button
               key={index}
               onClick={() => selectImage(index)}
