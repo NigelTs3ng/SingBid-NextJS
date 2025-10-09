@@ -1,6 +1,8 @@
 "use client";
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../../contexts/AuthContext';
+import { auctionService } from '../../lib/services';
 import Header from '../../components/ui/Header';
 import Breadcrumb from '../../components/ui/Breadcrumb';
 import Icon from '../../components/AppIcon';
@@ -16,6 +18,7 @@ import AuctionSubmission from '../../components/pages/create-auction/AuctionSubm
 
 const CreateAuction = () => {
   const router = useRouter();
+  const { isAuthenticated, user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
@@ -42,6 +45,13 @@ const CreateAuction = () => {
     additionalRequirements: ''
   });
 
+  // Check authentication
+  React.useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/auth/signin?redirect=/create-auction');
+    }
+  }, [isAuthenticated, router]);
+
   const steps = [
     { id: 1, title: 'Basic Details', icon: 'Package' },
     { id: 2, title: 'Images', icon: 'Image' },
@@ -56,8 +66,8 @@ const CreateAuction = () => {
     // Clear related errors when data changes
     const updatedErrors = { ...errors };
     Object.keys(newData)?.forEach(key => {
-      if (updatedErrors?.[key]) {
-        delete updatedErrors?.[key];
+      if (updatedErrors[key]) {
+        delete updatedErrors[key];
       }
     });
     setErrors(updatedErrors);
@@ -65,52 +75,46 @@ const CreateAuction = () => {
 
   const handleImagesChange = (newImages) => {
     setImages(newImages);
-    if (newImages?.length > 0 && errors?.images) {
-      const updatedErrors = { ...errors };
-      delete updatedErrors?.images;
-      setErrors(updatedErrors);
+    if (errors?.images) {
+      setErrors(prev => ({ ...prev, images: null }));
     }
   };
 
   const validateStep = (step) => {
-    const stepErrors = {};
-
+    const newErrors = {};
+    
     switch (step) {
       case 1:
-        if (!formData?.title?.trim()) stepErrors.title = 'Title is required';
-        if (!formData?.description?.trim()) stepErrors.description = 'Description is required';
-        if (!formData?.category) stepErrors.category = 'Category is required';
-        if (!formData?.condition) stepErrors.condition = 'Condition is required';
+        if (!formData?.title?.trim()) newErrors.title = 'Title is required';
+        if (!formData?.description?.trim()) newErrors.description = 'Description is required';
+        if (!formData?.category) newErrors.category = 'Category is required';
+        if (!formData?.condition) newErrors.condition = 'Condition is required';
         if (!formData?.reservePrice || parseFloat(formData?.reservePrice) <= 0) {
-          stepErrors.reservePrice = 'Valid reserve price is required';
+          newErrors.reservePrice = 'Valid reserve price is required';
         }
         break;
       case 2:
-        if (images?.length === 0) stepErrors.images = 'At least one image is required';
+        if (images?.length === 0) newErrors.images = 'At least one image is required';
         break;
       case 3:
-        if (!formData?.startDate) stepErrors.startDate = 'Start date is required';
-        if (!formData?.startTime) stepErrors.startTime = 'Start time is required';
-        if (!formData?.duration) stepErrors.duration = 'Duration is required';
+        if (!formData?.startDate) newErrors.startDate = 'Start date is required';
+        if (!formData?.startTime) newErrors.startTime = 'Start time is required';
+        if (!formData?.duration) newErrors.duration = 'Duration is required';
         break;
     }
-
-    setErrors(stepErrors);
-    return Object.keys(stepErrors)?.length === 0;
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const handleNextStep = () => {
-    if (currentStep < 4 && !validateStep(currentStep)) {
-      return;
-    }
-    
-    if (currentStep < steps?.length) {
+  const handleNext = () => {
+    if (validateStep(currentStep)) {
       setCurrentStep(currentStep + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  const handlePrevStep = () => {
+  const handlePrevious = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -127,28 +131,47 @@ const CreateAuction = () => {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+    setErrors({});
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock successful submission
-      console.log('Auction submitted:', { formData, images });
-      
-      // Navigate to success page or auction listings
-      router.push('/auction-listings', { 
-        state: { 
-          message: 'Auction created successfully! It will be live shortly.',
-          type: 'success'
-        }
+      // Validate all required fields
+      if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
+        throw new Error('Please complete all required fields');
+      }
+
+      // Create auction in Supabase
+      const auction = await auctionService.createAuction({
+        ...formData,
+        images // TODO: Handle image uploads to Supabase Storage
       });
+
+      console.log('Auction created successfully:', auction);
+      
+      // Navigate to the newly created auction
+      router.push(`/auction-details/${auction.id}?success=true`);
+      
     } catch (error) {
       console.error('Submission error:', error);
-      setErrors({ submit: 'Failed to create auction. Please try again.' });
+      setErrors({ submit: error.message || 'Failed to create auction. Please try again.' });
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  // Show loading if not authenticated yet
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <Icon name="Loader" size={32} className="animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Checking authentication...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const renderStepContent = () => {
     switch (currentStep) {
@@ -229,98 +252,89 @@ const CreateAuction = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">Create New Auction</h1>
           <p className="text-muted-foreground">
-            List your item for auction and reach thousands of potential buyers in Singapore
+            List your item and start earning. Complete all steps to publish your auction.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Step Navigation - Sidebar */}
-          <div className="lg:col-span-1">
-            <div className="bg-card border border-border rounded-lg p-4 sticky top-24">
-              <h3 className="font-semibold text-foreground mb-4">Progress</h3>
-              <div className="space-y-3">
-                {steps?.map((step, index) => {
-                  const status = getStepStatus(step?.id);
-                  return (
-                    <button
-                      key={step?.id}
-                      onClick={() => handleStepClick(step?.id)}
-                      disabled={step?.id > currentStep}
-                      className={`w-full flex items-center space-x-3 p-3 rounded-lg text-left transition-all duration-200 ${
-                        status === 'current' ?'bg-primary text-primary-foreground'
-                          : status === 'completed' ?'bg-success/10 text-success hover:bg-success/20' :'text-muted-foreground hover:bg-muted'
-                      } ${step?.id > currentStep ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                    >
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        status === 'current' ?'bg-primary-foreground text-primary'
-                          : status === 'completed' ?'bg-success text-success-foreground' :'bg-muted text-muted-foreground'
-                      }`}>
-                        {status === 'completed' ? (
-                          <Icon name="Check" size={16} />
-                        ) : (
-                          <Icon name={step?.icon} size={16} />
-                        )}
-                      </div>
-                      <div>
-                        <div className="font-medium text-sm">{step?.title}</div>
-                        <div className="text-xs opacity-75">Step {step?.id}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Progress Bar */}
-              <div className="mt-6">
-                <div className="flex justify-between text-sm text-muted-foreground mb-2">
-                  <span>Progress</span>
-                  <span>{Math.round((currentStep / steps?.length) * 100)}%</span>
+        {/* Progress Steps */}
+        <div className="mb-8">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {steps?.map((step, index) => {
+              const status = getStepStatus(step?.id);
+              const isClickable = step?.id <= currentStep;
+              
+              return (
+                <div key={step?.id} className="flex items-center">
+                  <button
+                    onClick={() => isClickable && handleStepClick(step?.id)}
+                    disabled={!isClickable}
+                    className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                      isClickable ? 'cursor-pointer' : 'cursor-not-allowed'
+                    } ${
+                      status === 'completed'
+                        ? 'bg-success text-success-foreground singbid-shadow'
+                        : status === 'current'
+                        ? 'bg-primary text-primary-foreground singbid-shadow'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    <div className="flex-shrink-0">
+                      {status === 'completed' ? (
+                        <Icon name="Check" size={20} />
+                      ) : (
+                        <Icon name={step?.icon} size={20} />
+                      )}
+                    </div>
+                    <div className="hidden sm:block">
+                      <div className="text-sm font-medium">{step?.title}</div>
+                    </div>
+                  </button>
+                  
+                  {index < steps?.length - 1 && (
+                    <div className="hidden md:block w-8 h-px bg-border mx-2" />
+                  )}
                 </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div 
-                    className="bg-primary h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${(currentStep / steps?.length) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
+        </div>
 
-          {/* Main Content */}
-          <div className="lg:col-span-3">
-            <div className="bg-card border border-border rounded-lg p-6 mb-6">
-              {renderStepContent()}
-            </div>
+        {/* Step Content */}
+        <div className="mb-8">
+          {renderStepContent()}
+        </div>
 
-            {/* Navigation Buttons */}
-            <div className="flex justify-between items-center">
+        {/* Navigation */}
+        <div className="flex items-center justify-between pt-6 border-t border-border">
+          <div>
+            {currentStep > 1 && (
               <Button
                 variant="outline"
-                onClick={handlePrevStep}
-                disabled={currentStep === 1}
+                onClick={handlePrevious}
                 iconName="ChevronLeft"
                 iconPosition="left"
               >
                 Previous
               </Button>
-
-              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                <span>Step {currentStep} of {steps?.length}</span>
-              </div>
-
-              {currentStep < steps?.length ? (
-                <Button
-                  variant="primary"
-                  onClick={handleNextStep}
-                  iconName="ChevronRight"
-                  iconPosition="right"
-                >
-                  {currentStep === 4 ? 'Preview' : 'Next'}
-                </Button>
-              ) : (
-                (<div className="w-24" />) // Spacer for alignment
-              )}
-            </div>
+            )}
+          </div>
+          
+          <div className="text-center">
+            <p className="text-sm text-muted-foreground">
+              Step {currentStep} of {steps?.length}
+            </p>
+          </div>
+          
+          <div>
+            {currentStep < steps?.length && (
+              <Button
+                onClick={handleNext}
+                iconName="ChevronRight"
+                iconPosition="right"
+              >
+                Next
+              </Button>
+            )}
           </div>
         </div>
       </div>

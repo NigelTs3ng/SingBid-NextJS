@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useAuth } from '../../contexts/AuthContext';
 import Icon from '../AppIcon';
 import Button from './Button';
 import Image from '../AppImage';
@@ -11,20 +12,24 @@ const Header = () => {
   const dropdownRef = useRef(null);
   const router = useRouter();
   const pathname = usePathname();
+  const { user, isAuthenticated, signOut, loading } = useAuth();
 
   const navigationItems = [
     { label: 'Home', path: '/home-page', icon: 'Home' },
     { label: 'Browse Auctions', path: '/auction-listings', icon: 'Search' },
-    { label: 'Create Auction', path: '/create-auction', icon: 'Plus' },
+    ...(isAuthenticated ? [{ label: 'Create Auction', path: '/create-auction', icon: 'Plus' }] : []),
     { label: 'Plans', path: '/subscription-plans', icon: 'CreditCard' },
   ];
 
-  const accountItems = [
+  const accountItems = isAuthenticated ? [
     { label: 'Payment Dashboard', path: '/payment-dashboard', icon: 'CreditCard' },
     { label: 'Subscription', path: '/subscription-management', icon: 'Crown' },
     { label: 'Profile Settings', path: '/profile', icon: 'User' },
     { label: 'Help & Support', path: '/help', icon: 'HelpCircle' },
-    { label: 'Sign Out', path: '/logout', icon: 'LogOut' },
+    { label: 'Sign Out', action: 'signOut', icon: 'LogOut' },
+  ] : [
+    { label: 'Sign In', path: '/auth/signin', icon: 'LogIn' },
+    { label: 'Sign Up', path: '/auth/signup', icon: 'UserPlus' },
   ];
 
   useEffect(() => {
@@ -45,6 +50,15 @@ const Header = () => {
 
   const handleNavigation = (path) => {
     router.push(path);
+  };
+
+  const handleAccountAction = async (item) => {
+    if (item.action === 'signOut') {
+      await signOut();
+      router.push('/');
+    } else {
+      handleNavigation(item.path);
+    }
   };
 
   const isActivePath = (path) => {
@@ -96,40 +110,60 @@ const Header = () => {
 
           {/* Desktop Account Dropdown */}
           <div className="hidden md:flex items-center space-x-4">
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
-                className="flex items-center space-x-2 p-2 rounded-lg hover:bg-accent transition-colors duration-200"
-              >
-                <div className="w-8 h-8 singbid-gradient rounded-full flex items-center justify-center singbid-shadow">
-                  <Icon name="User" size={16} color="white" />
-                </div>
-                <Icon 
-                  name="ChevronDown" 
-                  size={16} 
-                  className={`transition-transform duration-200 ${isAccountDropdownOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-
-              {isAccountDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-popover border border-border rounded-lg singbid-shadow-lg animate-fade-in">
-                  <div className="py-2">
-                    {accountItems?.map((item, index) => (
-                      <button
-                        key={item?.path}
-                        onClick={() => handleNavigation(item?.path)}
-                        className={`w-full flex items-center space-x-3 px-4 py-2 text-sm text-popover-foreground hover:bg-accent transition-colors duration-150 ${
-                          index === accountItems?.length - 1 ? 'border-t border-border mt-1 pt-3' : ''
-                        }`}
-                      >
-                        <Icon name={item?.icon} size={16} />
-                        <span>{item?.label}</span>
-                      </button>
-                    ))}
+            {!loading && (
+              <div className="relative" ref={dropdownRef}>
+                {isAuthenticated ? (
+                  <button
+                    onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
+                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-accent transition-colors duration-200"
+                  >
+                    <div className="w-8 h-8 singbid-gradient rounded-full flex items-center justify-center singbid-shadow">
+                      <Icon name="User" size={16} color="white" />
+                    </div>
+                    <Icon 
+                      name="ChevronDown" 
+                      size={16} 
+                      className={`transition-transform duration-200 ${isAccountDropdownOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleNavigation('/auth/signin')}
+                    >
+                      Sign In
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleNavigation('/auth/signup')}
+                    >
+                      Sign Up
+                    </Button>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+
+                {isAccountDropdownOpen && isAuthenticated && (
+                  <div className="absolute right-0 mt-2 w-56 bg-popover border border-border rounded-lg singbid-shadow-lg animate-fade-in">
+                    <div className="py-2">
+                      {accountItems?.map((item, index) => (
+                        <button
+                          key={item?.path || item?.action}
+                          onClick={() => handleAccountAction(item)}
+                          className={`w-full flex items-center space-x-3 px-4 py-2 text-sm text-popover-foreground hover:bg-accent transition-colors duration-150 ${
+                            index === accountItems?.length - 1 ? 'border-t border-border mt-1 pt-3' : ''
+                          }`}
+                        >
+                          <Icon name={item?.icon} size={16} />
+                          <span>{item?.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -180,7 +214,7 @@ const Header = () => {
                 {accountItems?.map((item, index) => (
                   <button
                     key={item?.path}
-                    onClick={() => handleNavigation(item?.path)}
+                    onClick={() => handleAccountAction(item)}
                     className={`w-full flex items-center space-x-3 p-3 rounded-lg text-left transition-colors duration-200 text-foreground hover:bg-accent ${
                       index === accountItems?.length - 1 ? 'border-t border-border mt-2 pt-3' : ''
                     }`}
