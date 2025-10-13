@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Icon from '../AppIcon';
 import Button from './Button';
+import { supabase } from '@/lib/supabaseClient';
 import Image from '../AppImage';
 
 const Header = () => {
@@ -44,6 +45,10 @@ const Header = () => {
   }, [pathname]);
 
   const handleNavigation = (path) => {
+    if (path === '/logout') {
+      supabase.auth.signOut().then(() => router.push('/auth/login'))
+      return
+    }
     router.push(path);
   };
 
