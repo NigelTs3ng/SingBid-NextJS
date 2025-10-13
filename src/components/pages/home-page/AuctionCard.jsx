@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { realtimeService } from '../../../lib/services';
+import { auctionService } from '../../../lib/services';
 import Icon from '../../../components/AppIcon';
 import Image from '../../../components/AppImage';
 import Button from '../../../components/ui/Button';
@@ -31,45 +31,44 @@ const AuctionCard = ({ auction, viewMode = 'grid', onAuctionUpdate }) => {
     return () => clearInterval(timer);
   }, []);
 
-  // Polling for auction updates when realtime is disabled
+  // Real-time subscription for auction updates
   useEffect(() => {
-    let pollInterval;
+    let subscription;
     
-    const startPolling = () => {
-      pollInterval = setInterval(async () => {
-        try {
-          const updates = await realtimeService.pollAuctionUpdates(auction.id);
-          if (updates && updates.length > 0) {
-            // Update local state with new bid data
-            const latestBid = updates[0];
-            if (latestBid.amount > currentBid) {
-              setCurrentBid(latestBid.amount);
-              setTotalBids(prev => prev + updates.length);
-              
-              // Notify parent component if callback provided
-              if (onAuctionUpdate) {
-                onAuctionUpdate(auction.id, { 
-                  currentBid: latestBid.amount, 
-                  totalBids: totalBids + updates.length 
-                });
-              }
-            }
+    const handleAuctionUpdate = (payload) => {
+      console.log('Real-time auction update:', payload);
+      
+      if (payload.table === 'bids') {
+        // Update current bid if this is a new bid for our auction
+        if (payload.new && payload.new.auction_id === auction.id) {
+          setCurrentBid(payload.new.amount);
+          setTotalBids(prev => prev + 1);
+          
+          // Notify parent component if callback provided
+          if (onAuctionUpdate) {
+            onAuctionUpdate(auction.id, { 
+              currentBid: payload.new.amount, 
+              totalBids: totalBids + 1 
+            });
           }
-        } catch (error) {
-          console.error('Error polling auction updates:', error);
         }
-      }, 10000); // Poll every 10 seconds
-    };
-
-    // Start polling for this specific auction
-    startPolling();
-
-    return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
+      }
+      
+      if (payload.table === 'auctions' && payload.new) {
+        // Update auction data if needed
+        setCurrentBid(payload.new.current_price);
       }
     };
-  }, [auction.id, currentBid, totalBids, onAuctionUpdate]);
+
+    // Subscribe to real-time updates for this auction
+    subscription = auctionService.subscribeToAuction(auction.id, handleAuctionUpdate);
+
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
+  }, [auction.id, totalBids, onAuctionUpdate]);
 
   const formatTime = (time) => {
     return time < 10 ? `0${time}` : time;

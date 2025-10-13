@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useParams } from 'next/navigation';
 import { useAuth } from '../../../contexts/AuthContext';
-import { auctionService, realtimeService } from '../../../lib/services';
+import { auctionService } from '../../../lib/services';
 import Header from '../../../components/ui/Header';
 import Breadcrumb from '../../../components/ui/Breadcrumb';
 import ImageGallery from '../../../components/pages/auction-details/ImageGallery';
@@ -46,7 +46,6 @@ const AuctionDetails = () => {
   const [error, setError] = useState(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [lastBidCheck, setLastBidCheck] = useState(null);
 
   // Fetch auction data with refresh capability
   const fetchAuctionData = useCallback(async (showRefreshing = false) => {
@@ -60,7 +59,6 @@ const AuctionDetails = () => {
       const auctionData = await auctionService.getAuctionById(auctionId);
       setAuction(auctionData);
       setCurrentBid(auctionData.currentBid);
-      setLastBidCheck(new Date().toISOString());
     } catch (err) {
       console.error('Error fetching auction:', err);
       setError('Failed to load auction details');
@@ -80,34 +78,39 @@ const AuctionDetails = () => {
     fetchAuctionData();
   }, [fetchAuctionData]);
 
-  // Polling for bid updates when realtime is disabled
+  // Real-time subscription for auction updates
   useEffect(() => {
     if (!auction?.id) return;
 
-    let pollInterval;
+    let subscription;
     
-    const startPolling = () => {
-      pollInterval = setInterval(async () => {
-        try {
-          const updates = await realtimeService.pollAuctionUpdates(auction.id, lastBidCheck);
-          if (updates && updates.length > 0) {
-            // Refresh auction data to get latest bids and current bid
-            await fetchAuctionData(false);
-          }
-        } catch (error) {
-          console.error('Error polling bid updates:', error);
+    const handleAuctionUpdate = (payload) => {
+      console.log('Real-time auction update in details page:', payload);
+      
+      if (payload.table === 'bids') {
+        // Update current bid if this is a new bid for our auction
+        if (payload.new && payload.new.auction_id === auction.id) {
+          setCurrentBid(payload.new.amount);
+          // Refresh full auction data to get updated bid history
+          fetchAuctionData(false);
         }
-      }, 5000); // Poll every 5 seconds for auction details page
-    };
-
-    startPolling();
-
-    return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
+      }
+      
+      if (payload.table === 'auctions' && payload.new) {
+        // Update auction data if needed
+        setCurrentBid(payload.new.current_price);
       }
     };
-  }, [auction?.id, lastBidCheck, fetchAuctionData]);
+
+    // Subscribe to real-time updates for this auction
+    subscription = auctionService.subscribeToAuction(auction.id, handleAuctionUpdate);
+
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
+  }, [auction?.id, fetchAuctionData]);
 
   const handlePlaceBid = async (amount) => {
     console.log('🔥 AUCTION DETAILS - handlePlaceBid called with amount:', amount);

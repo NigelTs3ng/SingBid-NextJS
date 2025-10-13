@@ -7,6 +7,110 @@ type Bid = Database['public']['Tables']['bids']['Row']
 type BidInsert = Database['public']['Tables']['bids']['Insert']
 
 export const auctionService = {
+  // Get all active auctions with filters
+  async getAuctions(filters = {}) {
+    let query = supabase
+      .from('auctions')
+      .select(`
+        *,
+        users!seller_id (
+          id,
+          email,
+          user_profiles(username, profile_image, rating_average, rating_count)
+        ),
+        bids(
+          amount, 
+          created_at, 
+          users!bidder_id(
+            user_profiles(username)
+          )
+        )
+      `)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+
+    // Apply filters
+    if (filters.category && filters.category !== 'all') {
+      query = query.eq('category', filters.category)
+    }
+    
+    if (filters.priceRange && filters.priceRange !== 'all') {
+      const [min, max] = filters.priceRange.split('-').map(Number)
+      if (max) {
+        query = query.gte('reserve', min).lte('reserve', max)
+      } else {
+        query = query.gte('reserve', min)
+      }
+    }
+
+    if (filters.search) {
+      query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
+    }
+
+    const { data, error } = await query
+    
+    if (error) throw error
+    
+    // Transform data to match expected format
+    return data.map(auction => {
+      // Calculate time remaining
+      const calculateTimeRemaining = (endTime: string) => {
+        const now = new Date()
+        const end = new Date(endTime)
+        const diff = end.getTime() - now.getTime()
+
+        if (diff <= 0) {
+          return { hours: 0, minutes: 0, seconds: 0 }
+        }
+
+        const hours = Math.floor(diff / (1000 * 60 * 60))
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
+        return { hours, minutes, seconds }
+      }
+
+      // Handle image URL properly
+      let primaryImage = auction.image_url
+      
+      if (auction.image_urls) {
+        try {
+          const imageUrls = typeof auction.image_urls === 'string' 
+            ? JSON.parse(auction.image_urls) 
+            : auction.image_urls
+          
+          if (Array.isArray(imageUrls) && imageUrls.length > 0) {
+            primaryImage = imageUrls[0]
+          }
+        } catch (parseError) {
+          console.error('Error parsing image_urls:', parseError)
+        }
+      }
+      
+      return {
+        id: auction.id,
+        title: auction.title,
+        description: auction.description,
+        currentBid: auction.bids?.length > 0 
+          ? Math.max(...auction.bids.map((b: any) => b.amount))
+          : auction.reserve || auction.starting_bid || 0,
+        reservePrice: auction.reserve || 0,
+        timeRemaining: calculateTimeRemaining(auction.end_at),
+        image: primaryImage || "https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop",
+        seller: {
+          name: auction.users?.user_profiles?.username || 'Unknown',
+          rating: auction.users?.user_profiles?.rating_average || 0,
+          verified: true
+        },
+        totalBids: auction.bids?.length || 0,
+        category: auction.category || 'General',
+        views: auction.views || 0,
+        shippingIncluded: auction.shipping_included || false,
+        featured: auction.featured || false
+      }
+    })
+  },
+
   // Create a new auction
   async createAuction(auctionData: Omit<AuctionInsert, 'seller_id'>) {
     const { data: { user } } = await supabase.auth.getUser()
@@ -26,25 +130,9 @@ export const auctionService = {
     return data
   },
 
-  // Get all active auctions
+  // Get all active auctions (legacy method for backward compatibility)
   async getActiveAuctions() {
-    const { data, error } = await supabase
-      .from('auctions')
-      .select(`
-        *,
-        users!seller_id (email),
-        bids (
-          id,
-          amount,
-          created_at,
-          users!bidder_id (email)
-        )
-      `)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
-    return data
+    return this.getAuctions()
   },
 
   // Get auction by ID
