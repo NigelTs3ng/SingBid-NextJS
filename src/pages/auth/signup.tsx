@@ -79,7 +79,16 @@ const Signup = () => {
           setErrors({ submit: error.message })
         }
       } else if (user) {
-        setShowSuccess(true)
+        // Check if email confirmation is required
+        if (user.email_confirmed_at) {
+          // User is already confirmed (auto-confirm enabled), redirect to home
+          console.log('🔐 [SIGNUP] User auto-confirmed, redirecting to home page')
+          router.push('/home-page')
+        } else {
+          // Email confirmation required, show success message
+          console.log('🔐 [SIGNUP] Email confirmation required, showing success message')
+          setShowSuccess(true)
+        }
       }
     } catch (error: any) {
       setErrors({ submit: error.message || 'An error occurred during signup' })

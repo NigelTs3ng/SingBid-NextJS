@@ -68,10 +68,8 @@ const Login = () => {
         } else {
           setErrors({ submit: error.message })
         }
-      } else if (user) {
-        const redirect = router.query.redirect as string
-        router.push(redirect || '/home-page')
       }
+      // Remove the manual redirect - AuthContext will handle it automatically
     } catch (error: any) {
       setErrors({ submit: error.message || 'An error occurred during login' })
     } finally {

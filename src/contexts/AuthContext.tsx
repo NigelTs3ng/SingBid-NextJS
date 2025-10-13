@@ -49,6 +49,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user ?? null)
       setIsLoading(false)
 
+      // Handle successful sign in - redirect to home page
+      if (event === 'SIGNED_IN' && session?.user) {
+        console.log('🔐 [AUTH] User signed in successfully, redirecting to home page')
+        const currentPath = router.asPath
+        // Don't redirect if we're already on the home page or if we're in auth pages
+        if (!currentPath.includes('/home-page') && !currentPath.includes('/auth/')) {
+          router.push('/home-page')
+        } else if (currentPath.includes('/auth/')) {
+          // If we're on auth pages, always redirect to home
+          router.push('/home-page')
+        }
+      }
+
       // Handle sign out - redirect to home page
       if (event === 'SIGNED_OUT') {
         console.log('🔐 [AUTH] User signed out, redirecting to home page')
@@ -60,19 +73,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [router])
 
   const signUp = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
-    return { user: data.user, error }
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`
+        }
+      })
+      
+      if (error) {
+        console.error('🔐 [AUTH] Sign up error:', error)
+        return { user: null, error }
+      }
+
+      console.log('🔐 [AUTH] Sign up successful:', data.user?.email)
+      return { user: data.user, error: null }
+    } catch (error) {
+      console.error('🔐 [AUTH] Sign up exception:', error)
+      return { user: null, error }
+    }
   }
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    return { user: data.user, error }
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      
+      if (error) {
+        console.error('🔐 [AUTH] Sign in error:', error)
+        return { user: null, error }
+      }
+
+      console.log('🔐 [AUTH] Sign in successful:', data.user?.email)
+      // The redirect will be handled by the onAuthStateChange listener
+      return { user: data.user, error: null }
+    } catch (error) {
+      console.error('🔐 [AUTH] Sign in exception:', error)
+      return { user: null, error }
+    }
   }
 
   const signOut = async () => {
