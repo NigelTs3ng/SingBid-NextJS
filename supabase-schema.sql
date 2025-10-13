@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS public.users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+-- Add Stripe columns if they don't exist
+ALTER TABLE public.users 
+  ADD COLUMN IF NOT EXISTS stripe_account_id TEXT,
+  ADD COLUMN IF NOT EXISTS stripe_onboarding_complete BOOLEAN DEFAULT FALSE;
+
 -- User profiles with extended information
 CREATE TABLE IF NOT EXISTS public.user_profiles (
     user_id uuid PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
@@ -216,6 +221,12 @@ CREATE TABLE IF NOT EXISTS public.payments (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+-- Add Stripe columns if they don't exist
+ALTER TABLE public.payments 
+  ADD COLUMN IF NOT EXISTS stripe_transfer_id TEXT,
+  ADD COLUMN IF NOT EXISTS capture_method VARCHAR(20) DEFAULT 'automatic',
+  ADD COLUMN IF NOT EXISTS application_fee_amount DECIMAL(10,2) DEFAULT 0;
+
 -- Seller payouts
 CREATE TABLE IF NOT EXISTS public.payouts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -231,6 +242,12 @@ CREATE TABLE IF NOT EXISTS public.payouts (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
+
+-- Add Stripe columns if they don't exist
+ALTER TABLE public.payouts 
+  ADD COLUMN IF NOT EXISTS stripe_transfer_id TEXT,
+  ADD COLUMN IF NOT EXISTS hold_expires_at TIMESTAMPTZ DEFAULT (now() + interval '5 days'),
+  ADD COLUMN IF NOT EXISTS hold_reason TEXT DEFAULT 'buyer_protection';
 
 -- Disputes and resolution
 CREATE TABLE IF NOT EXISTS public.disputes (

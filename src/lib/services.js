@@ -551,6 +551,30 @@ export const auctionService = {
       }
     }
 
+    // Calculate end time more precisely
+    const startDateTime = new Date(`${auctionData.startDate}T${auctionData.startTime}`);
+    const durationInDays = parseFloat(auctionData.duration);
+    
+    // Convert days to milliseconds with better precision
+    const durationInMs = Math.round(durationInDays * 24 * 60 * 60 * 1000);
+    const endDateTime = new Date(startDateTime.getTime() + durationInMs);
+    
+    // Ensure end time is after start time
+    if (endDateTime <= startDateTime) {
+      throw new Error('Auction end time must be after start time');
+    }
+    
+    console.log('Auction timing calculation:', {
+      startDate: auctionData.startDate,
+      startTime: auctionData.startTime,
+      duration: auctionData.duration,
+      durationInDays,
+      durationInMs,
+      startDateTime: startDateTime.toISOString(),
+      endDateTime: endDateTime.toISOString(),
+      timeDiff: endDateTime.getTime() - startDateTime.getTime()
+    });
+
     // Now create the auction
     const { data: auction, error } = await supabase
       .from('auctions')
@@ -560,9 +584,8 @@ export const auctionService = {
         description: auctionData.description,
         reserve: parseFloat(auctionData.reservePrice) || 0,
         starting_bid: parseFloat(auctionData.reservePrice) || 0,
-        start_at: new Date(`${auctionData.startDate}T${auctionData.startTime}`),
-        end_at: new Date(new Date(`${auctionData.startDate}T${auctionData.startTime}`).getTime() + 
-                parseInt(auctionData.duration) * 24 * 60 * 60 * 1000),
+        start_at: startDateTime.toISOString(),
+        end_at: endDateTime.toISOString(),
         category: auctionData.category,
         condition: auctionData.condition,
         shipping_method: auctionData.shippingMethod,
@@ -574,7 +597,10 @@ export const auctionService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Database insertion error:', error);
+      throw error;
+    }
 
     // Upload images if provided
     if (auctionData.images && auctionData.images.length > 0) {
@@ -603,12 +629,10 @@ export const auctionService = {
     return auction;
   },
 
-  // Place bid with polling fallback
+  // Place bid with pre-authorization integration
   async placeBid(auctionId, amount) {
     console.log('🚀 PLACE BID FUNCTION CALLED - IMMEDIATE LOG');
     console.log('📊 Arguments received:', { auctionId, amount, type: typeof amount });
-    console.log('🌐 Current URL:', window.location.href);
-    console.log('🔍 Starting placeBid function...', { auctionId, amount });
     
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -618,226 +642,137 @@ export const auctionService = {
 
     console.log('✅ User authenticated:', { 
       id: user.id, 
-      email: user.email,
-      role: user.role,
-      aud: user.aud 
+      email: user.email
     });
 
-    // Check if user exists in our users table
-    console.log('🔍 Checking if user exists in users table...');
-    const { data: existingUser, error: userCheckError } = await supabase
-      .from('users')
-      .select('id, email, created_at')
-      .eq('id', user.id)
-      .single();
-
-    if (userCheckError) {
-      console.log('⚠️ User check error:', userCheckError);
-      if (userCheckError.code !== 'PGRST116') {
-        // PGRST116 is "not found" error, other errors are real problems
-        console.error('❌ Unexpected user check error:', userCheckError);
-        throw userCheckError;
-      }
-      console.log('📝 User not found in users table (PGRST116)');
-    } else {
-      console.log('✅ User found in users table:', existingUser);
-    }
-
-    // If user doesn't exist in our users table, create them
-    if (!existingUser) {
-      console.log('🔄 Creating user record for bid placement...');
-      const { data: createdUser, error: createUserError } = await supabase
-        .from('users')
-        .insert({
-          id: user.id,
-          email: user.email,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (createUserError) {
-        console.error('❌ Failed to create user record:', createUserError);
-        throw new Error(`Failed to create user record: ${createUserError.message}`);
-      }
-
-      console.log('✅ User record created:', createdUser);
-
-      // Also ensure user profile exists
-      console.log('🔍 Checking if user profile exists...');
-      const { data: existingProfile, error: profileCheckError } = await supabase
-        .from('user_profiles')
-        .select('user_id, username')
-        .eq('user_id', user.id)
-        .single();
-
-      if (profileCheckError && profileCheckError.code !== 'PGRST116') {
-        console.error('❌ Profile check error:', profileCheckError);
-      } else if (!existingProfile) {
-        console.log('🔄 Creating user profile...');
-        // Create a basic profile if it doesn't exist
-        const { data: createdProfile, error: profileError } = await supabase
-          .from('user_profiles')
-          .insert({
-            user_id: user.id,
-            username: user.email?.split('@')[0] || `user_${user.id.slice(0, 8)}`,
-            first_name: user.user_metadata?.first_name || '',
-            last_name: user.user_metadata?.last_name || '',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (profileError) {
-          console.error('⚠️ Failed to create user profile:', profileError);
-          // Don't fail bid placement if profile creation fails
-        } else {
-          console.log('✅ User profile created:', createdProfile);
-        }
-      } else {
-        console.log('✅ User profile exists:', existingProfile);
-      }
-    }
-
-    // Verify auction exists and get auction details
-    console.log('🔍 Verifying auction exists...');
-    const { data: auction, error: auctionError } = await supabase
-      .from('auctions')
-      .select('id, title, seller_id, status, end_at, reserve')
-      .eq('id', auctionId)
-      .single();
-
-    if (auctionError) {
-      console.error('❌ Auction verification failed:', auctionError);
-      throw new Error(`Auction not found: ${auctionError.message}`);
-    }
-
-    console.log('✅ Auction found:', auction);
-
-    // Check if user is trying to bid on their own auction
-    if (auction.seller_id === user.id) {
-      console.error('❌ User trying to bid on their own auction');
-      throw new Error('Cannot bid on your own auction');
-    }
-
-    // Check auction status
-    if (auction.status !== 'active') {
-      console.error('❌ Auction is not active:', auction.status);
-      throw new Error('Auction is not active');
-    }
-
-    // Check if auction has ended
-    const now = new Date();
-    const endTime = new Date(auction.end_at);
-    if (endTime <= now) {
-      console.error('❌ Auction has ended');
-      throw new Error('Auction has ended');
-    }
-
-    // Get current highest bid to validate bid amount
-    console.log('🔍 Getting current highest bid...');
-    const { data: currentBids, error: bidsError } = await supabase
-      .from('bids')
-      .select('amount')
-      .eq('auction_id', auctionId)
-      .order('amount', { ascending: false })
-      .limit(1);
-
-    if (bidsError) {
-      console.error('⚠️ Error fetching current bids:', bidsError);
-    } else {
-      console.log('📊 Current bids:', currentBids);
-    }
-
-    const currentHighestBid = currentBids && currentBids.length > 0 ? currentBids[0].amount : auction.reserve || 0;
-    const bidAmount = parseFloat(amount);
-
-    console.log('💰 Bid validation:', { 
-      bidAmount, 
-      currentHighestBid, 
-      reserve: auction.reserve,
-      isValid: bidAmount > currentHighestBid 
-    });
-
-    if (bidAmount <= currentHighestBid) {
-      throw new Error(`Bid must be higher than current bid of $${currentHighestBid}`);
-    }
-
-    // Test RLS permissions by doing a simple select first
-    console.log('🔍 Testing RLS permissions...');
-    const { data: testData, error: testError } = await supabase
-      .from('bids')
-      .select('id')
-      .eq('auction_id', auctionId)
-      .limit(1);
-
-    if (testError) {
-      console.error('❌ RLS test failed:', testError);
-    } else {
-      console.log('✅ RLS test passed, can read bids:', testData?.length || 0);
-    }
-
-    // Now attempt to place the bid
-    console.log('🎯 Attempting to place bid...');
-    const bidData = {
-      auction_id: auctionId,
-      bidder_id: user.id,
-      amount: bidAmount
-    };
+    // NEW FLOW: This function is now just a wrapper for the new API endpoints
+    // The actual bidding logic is handled by:
+    // 1. /api/bids/pre-authorize - for payment pre-authorization
+    // 2. /api/bids/place - for actual bid placement
     
-    console.log('💾 Bid data to insert:', bidData);
+    // For backward compatibility, we'll call the new API endpoints
+    try {
+      // First check if user has an active pre-authorization for this auction
+      const { data: existingPreAuth } = await supabase
+        .from('bid_pre_authorizations')
+        .select('*')
+        .eq('auction_id', auctionId)
+        .eq('bidder_id', user.id)
+        .eq('status', 'active')
+        .single();
 
-    const { data: placedBid, error } = await supabase
-      .from('bids')
-      .insert(bidData)
+      if (!existingPreAuth) {
+        throw new Error('No active pre-authorization found. Please pre-authorize your payment method first.');
+      }
+
+      // Call the new bid placement API
+      const response = await fetch('/api/bids/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auctionId,
+          bidAmount: amount,
+          preAuthId: existingPreAuth.id,
+          bidderId: user.id,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to place bid');
+      }
+
+      console.log('✅ Bid placed successfully via new API:', result);
+      return result.bid;
+
+    } catch (error) {
+      console.error('❌ Bid placement failed:', error);
+      throw error;
+    }
+  },
+
+  // New method: Check bid pre-authorization status
+  async checkBidPreAuth(auctionId, bidderId) {
+    const { data: preAuth, error } = await supabase
+      .from('bid_pre_authorizations')
       .select('*')
+      .eq('auction_id', auctionId)
+      .eq('bidder_id', bidderId)
+      .eq('status', 'active')
       .single();
 
-    if (error) {
-      console.error('❌ Bid placement failed:', {
-        error,
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      });
-      
-      // Additional debugging for 403 errors
-      if (error.code === '42501' || error.message?.includes('403') || error.message?.includes('permission')) {
-        console.error('🔒 Permission denied details:', {
-          userRole: user.role,
-          userAud: user.aud,
-          userId: user.id,
-          auctionId,
-          errorCode: error.code,
-          errorMessage: error.message
-        });
-        
-        // Check if user can insert into any other table to test general permissions
-        try {
-          console.log('🧪 Testing general insert permissions...');
-          const { data: testInsert, error: testInsertError } = await supabase
-            .from('user_profiles')
-            .select('user_id')
-            .eq('user_id', user.id)
-            .limit(1);
-          
-          console.log('🔍 General permission test result:', { testInsert, testInsertError });
-        } catch (permTest) {
-          console.error('❌ General permission test failed:', permTest);
-        }
-      }
-      
+    if (error && error.code !== 'PGRST116') {
       throw error;
     }
 
-    console.log('🎉 Bid placed successfully:', placedBid);
+    return preAuth;
+  },
 
-    // If realtime is disabled, we can still return the bid
-    // The UI will need to refresh/poll to see updates
-    return placedBid;
+  // New method: Complete auction and process payments
+  async completeAuction(auctionId) {
+    try {
+      const response = await fetch('/api/auctions/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auctionId }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to complete auction');
+      }
+
+      console.log('✅ Auction completed successfully:', result);
+      return result;
+
+    } catch (error) {
+      console.error('❌ Auction completion failed:', error);
+      throw error;
+    }
+  },
+
+  // New method: Get auction winner details
+  async getAuctionWinner(auctionId) {
+    const { data: winner, error } = await supabase
+      .from('auction_winners')
+      .select(`
+        *,
+        users!winner_id(
+          user_profiles(username, profile_image)
+        ),
+        bids!winning_bid_id(amount, created_at)
+      `)
+      .eq('auction_id', auctionId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    return winner;
+  },
+
+  // New method: Get payment status for an auction
+  async getAuctionPaymentStatus(auctionId) {
+    const { data: payment, error } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        payouts(*),
+        escrow_holds(*)
+      `)
+      .eq('auction_id', auctionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    return payment;
   }
 };
 
@@ -938,31 +873,195 @@ export const userService = {
   }
 };
 
-// Payment Services (for integration with Stripe)
+// Payment Services (Enhanced for Stripe PaymentIntent + Connect Flow)
 export const paymentService = {
-  // Create payment intent
-  async createPaymentIntent(auctionId, amount) {
-    // This would typically call your backend API endpoint that creates Stripe payment intent
-    const response = await fetch('/api/create-payment-intent', {
+  // Step 1: Create payment intent for auction winner
+  async createPaymentIntent(auctionId, amount, paymentMethodId, buyerId) {
+    const response = await fetch('/api/payments/create-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auctionId, amount })
+      body: JSON.stringify({ 
+        auctionId, 
+        amount, 
+        paymentMethodId, 
+        buyerId 
+      })
     });
 
-    if (!response.ok) throw new Error('Failed to create payment intent');
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create payment intent');
+    }
+    
     return response.json();
   },
 
-  // Record payment in database
+  // Step 2: Capture payment after auction ends
+  async capturePayment(auctionId, paymentIntentId) {
+    const response = await fetch('/api/payments/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auctionId, paymentIntentId })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to capture payment');
+    }
+    
+    return response.json();
+  },
+
+  // Step 3: Release payment to seller (manual or auto after 5 days)
+  async releasePayment(payoutId, auctionId, reason = 'buyer_confirmation') {
+    const response = await fetch('/api/payments/release', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payoutId, auctionId, reason })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to release payment');
+    }
+    
+    return response.json();
+  },
+
+  // Step 4: Process refund for disputes
+  async processRefund(paymentIntentId, auctionId, reason, amount = null) {
+    const response = await fetch('/api/payments/refund', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentIntentId, auctionId, reason, amount })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to process refund');
+    }
+    
+    return response.json();
+  },
+
+  // Seller onboarding - Create Stripe Connect account
+  async createStripeAccount(userId, email, type = 'express') {
+    const response = await fetch('/api/stripe/create-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, email, type })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create Stripe account');
+    }
+    
+    return response.json();
+  },
+
+  // Get payment status and details
+  async getPaymentStatus(auctionId) {
+    const { data, error } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        payouts(*),
+        outcomes(*)
+      `)
+      .eq('auction_id', auctionId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get all payouts for a seller
+  async getSellerPayouts(sellerId, status = null) {
+    let query = supabase
+      .from('payouts')
+      .select(`
+        *,
+        auctions(title, id),
+        payments(amount, status)
+      `)
+      .eq('seller_id', sellerId)
+      .order('created_at', { ascending: false });
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+
+  // Get payment history for a buyer
+  async getBuyerPayments(buyerId) {
+    const { data, error } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        auctions(title, id, seller_id),
+        outcomes(*)
+      `)
+      .eq('user_id', buyerId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Check if seller has completed Stripe onboarding
+  async checkSellerOnboardingStatus(userId) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('stripe_account_id, stripe_onboarding_complete')
+      .eq('id', userId)
+      .single();
+
+    if (error) throw error;
+    return {
+      hasStripeAccount: !!data.stripe_account_id,
+      onboardingComplete: !!data.stripe_onboarding_complete,
+      accountId: data.stripe_account_id
+    };
+  },
+
+  // Record payment in database (for legacy compatibility)
   async recordPayment(paymentIntentId, userId, amount, auctionId) {
     const { data, error } = await supabase
       .from('payments')
       .insert({
         user_id: userId,
         intent_id: paymentIntentId,
+        stripe_payment_intent_id: paymentIntentId,
         amount,
+        auction_id: auctionId,
         status: 'pending'
-      });
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Dispute handling
+  async openDispute(paymentId, auctionId, reason, description) {
+    const { data, error } = await supabase
+      .from('disputes')
+      .insert({
+        payment_id: paymentId,
+        auction_id: auctionId,
+        opener_id: (await supabase.auth.getUser()).data.user?.id,
+        reason,
+        category: 'payment_issue',
+        status: 'open'
+      })
+      .select()
+      .single();
 
     if (error) throw error;
     return data;
