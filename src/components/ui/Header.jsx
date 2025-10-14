@@ -12,7 +12,7 @@ const Header = () => {
   const dropdownRef = useRef(null);
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, signOut, loading } = useAuth();
+  const { user, userProfile, isAuthenticated, signOut, loading } = useAuth();
 
   const navigationItems = [
     { label: 'Home', path: '/home-page', icon: 'Home' },
@@ -120,6 +120,9 @@ const Header = () => {
                     <div className="w-8 h-8 singbid-gradient rounded-full flex items-center justify-center singbid-shadow">
                       <Icon name="User" size={16} color="white" />
                     </div>
+                    <span className="text-sm font-medium text-foreground max-w-24 truncate">
+                      {loading ? '...' : (userProfile?.username || userProfile?.first_name || user?.email?.split('@')[0] || 'User')}
+                    </span>
                     <Icon 
                       name="ChevronDown" 
                       size={16} 
@@ -210,7 +213,19 @@ const Header = () => {
               ))}
 
               <div className="border-t border-border pt-4 mt-4">
-                <h3 className="text-sm font-semibold text-muted-foreground mb-2 px-3">Account</h3>
+                <div className="px-3 mb-2">
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-1">Account</h3>
+                  {isAuthenticated && (
+                    <div className="flex items-center space-x-2 text-sm text-foreground">
+                      <div className="w-6 h-6 singbid-gradient rounded-full flex items-center justify-center singbid-shadow">
+                        <Icon name="User" size={12} color="white" />
+                      </div>
+                      <span className="font-medium">
+                        {loading ? '...' : (userProfile?.username || userProfile?.first_name || user?.email?.split('@')[0] || 'User')}
+                      </span>
+                    </div>
+                  )}
+                </div>
                 {accountItems?.map((item, index) => (
                   <button
                     key={item?.path}
