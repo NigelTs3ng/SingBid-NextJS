@@ -15,10 +15,12 @@ const BiddingPanel = ({ auction, currentBid, onPlaceBid, isAuthenticated }) => {
     })?.format(price);
   };
 
-  const minBidAmount = currentBid ? currentBid + 1 : auction?.startingPrice;
+  const minBidAmount = currentBid ? currentBid + 1 : (auction?.reservePrice || auction?.starting_bid || 0);
 
   useEffect(() => {
-    setBidAmount(minBidAmount?.toString());
+    if (minBidAmount && !isNaN(minBidAmount)) {
+      setBidAmount(minBidAmount.toString());
+    }
   }, [minBidAmount]);
 
   const validateBid = (amount) => {
@@ -59,12 +61,12 @@ const BiddingPanel = ({ auction, currentBid, onPlaceBid, isAuthenticated }) => {
     }
   };
 
-  const quickBidAmounts = [
+  const quickBidAmounts = minBidAmount && !isNaN(minBidAmount) ? [
     minBidAmount + 5,
     minBidAmount + 10,
     minBidAmount + 25,
     minBidAmount + 50
-  ];
+  ] : [];
 
   if (auction?.status === 'ended') {
     return (
@@ -94,7 +96,7 @@ const BiddingPanel = ({ auction, currentBid, onPlaceBid, isAuthenticated }) => {
           <span className="text-sm font-medium text-muted-foreground">Current Highest Bid</span>
         </div>
         <div className="text-3xl font-bold text-foreground">
-          {currentBid ? formatPrice(currentBid) : formatPrice(auction?.startingPrice)}
+          {currentBid ? formatPrice(currentBid) : formatPrice(auction?.reservePrice || auction?.starting_bid || 0)}
         </div>
         {!currentBid && (
           <p className="text-sm text-muted-foreground mt-1">Starting price - No bids yet</p>
@@ -107,15 +109,15 @@ const BiddingPanel = ({ auction, currentBid, onPlaceBid, isAuthenticated }) => {
             <Input
               label="Your Bid Amount"
               type="number"
-              value={bidAmount}
+              value={bidAmount || ''}
               onChange={handleBidChange}
               error={bidError}
-              placeholder={`Minimum ${formatPrice(minBidAmount)}`}
-              min={minBidAmount}
+              placeholder={`Minimum ${formatPrice(minBidAmount || 0)}`}
+              min={minBidAmount || 0}
               step="1"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Minimum bid: {formatPrice(minBidAmount)}
+              Minimum bid: {formatPrice(minBidAmount || 0)}
             </p>
           </div>
 

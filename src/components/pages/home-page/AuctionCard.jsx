@@ -56,7 +56,8 @@ const AuctionCard = ({ auction, viewMode = 'grid', onAuctionUpdate }) => {
       
       if (payload.table === 'auctions' && payload.new) {
         // Update auction data if needed
-        setCurrentBid(payload.new.current_price);
+        // Note: current_price column doesn't exist in current schema
+        // We'll rely on the bids table for current bid updates
       }
     };
 

@@ -52,8 +52,18 @@ export default async function handler(
       return res.status(400).json({ error: 'Auction has ended' })
     }
 
-    if (bidAmount <= auction.current_price) {
-      return res.status(400).json({ error: 'Bid must be higher than current price' })
+    // Get current highest bid
+    const { data: currentBids } = await supabase
+      .from('bids')
+      .select('amount')
+      .eq('auction_id', auctionId)
+      .order('amount', { ascending: false })
+      .limit(1)
+    
+    const currentHighestBid = currentBids?.[0]?.amount || auction.reserve || auction.starting_bid || 0
+    
+    if (bidAmount <= currentHighestBid) {
+      return res.status(400).json({ error: `Bid must be higher than current bid of ${currentHighestBid}` })
     }
 
     // Create PaymentIntent with Stripe

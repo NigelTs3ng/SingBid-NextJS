@@ -43,20 +43,28 @@ const SellerOnboardingComplete = () => {
           throw new Error(result.error || 'Failed to check account status');
         }
 
-        // Update user record with onboarding completion status
+        console.log('🔍 Onboarding Complete - Stripe Status:', {
+          accountId: account_id,
+          onboardingComplete: result.onboardingComplete,
+          chargesEnabled: result.chargesEnabled,
+          payoutsEnabled: result.payoutsEnabled,
+          userId: user.id
+        });
+
+        // Update user record with onboarding completion status (only fields that exist)
         const { error: updateError } = await supabase
           .from('users')
           .update({
+            stripe_account_id: account_id, // Ensure account_id is stored
             stripe_onboarding_complete: result.onboardingComplete,
-            stripe_charges_enabled: result.chargesEnabled,
-            stripe_payouts_enabled: result.payoutsEnabled,
-            stripe_details_submitted: result.detailsSubmitted,
             updated_at: new Date().toISOString()
           })
           .eq('id', user.id);
 
         if (updateError) {
-          console.error('Failed to update user onboarding status:', updateError);
+          console.error('❌ Failed to update user onboarding status:', updateError);
+        } else {
+          console.log('✅ Successfully updated user onboarding status');
         }
 
         setVerificationStatus(result);

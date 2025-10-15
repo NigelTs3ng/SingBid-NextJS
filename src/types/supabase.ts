@@ -26,7 +26,7 @@ export interface Database {
           description: string
           image_url?: string
           starting_price: number
-          current_price: number
+          starting_bid: number
           end_time: string
           status: 'active' | 'ended' | 'cancelled'
           created_at: string
@@ -38,7 +38,7 @@ export interface Database {
           description: string
           image_url?: string
           starting_price: number
-          current_price?: number
+          starting_bid?: number
           end_time: string
           status?: 'active' | 'ended' | 'cancelled'
           created_at?: string
@@ -50,7 +50,7 @@ export interface Database {
           description?: string
           image_url?: string
           starting_price?: number
-          current_price?: number
+          starting_bid?: number
           end_time?: string
           status?: 'active' | 'ended' | 'cancelled'
           created_at?: string

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
-import { auctionService } from '../../lib/services';
+import { auctionService } from '../../lib/services.js';
 import { supabase } from '../../lib/supabase';
 import Header from '../../components/ui/Header';
 import Breadcrumb from '../../components/ui/Breadcrumb';
@@ -198,7 +198,7 @@ const CreateAuction = () => {
         // Check if user has Stripe account setup
         const { data: userData, error } = await supabase
           .from('users')
-          .select('stripe_account_id, stripe_onboarding_complete, stripe_charges_enabled')
+          .select('stripe_account_id, stripe_onboarding_complete')
           .eq('id', user.id)
           .single();
 
@@ -209,7 +209,11 @@ const CreateAuction = () => {
           return;
         }
 
-        console.log('User verification status:', userData);
+        console.log('🔍 Create Auction - User verification status:', {
+          userId: user.id,
+          stripeAccountId: userData.stripe_account_id,
+          onboardingComplete: userData.stripe_onboarding_complete
+        });
 
         // If no Stripe account, needs setup
         if (!userData.stripe_account_id) {
@@ -217,7 +221,7 @@ const CreateAuction = () => {
           return;
         }
 
-        // If has account but not onboarded, check current status
+        // If has account but not onboarded, check current status via API
         if (!userData.stripe_onboarding_complete) {
           try {
             const response = await fetch('/api/stripe/check-account-status', {
@@ -229,17 +233,15 @@ const CreateAuction = () => {
             const result = await response.json();
 
             if (response.ok && result.onboardingComplete) {
-              // Update local status
+              // Update local status (only update columns that exist)
               await supabase
                 .from('users')
                 .update({
                   stripe_onboarding_complete: true,
-                  stripe_charges_enabled: result.chargesEnabled,
-                  stripe_payouts_enabled: result.payoutsEnabled,
                 })
                 .eq('id', user.id);
 
-              setSellerVerificationStatus('verified');
+              setSellerVerificationStatus(result.chargesEnabled ? 'verified' : 'pending');
             } else {
               setSellerVerificationStatus('pending');
             }
@@ -247,10 +249,23 @@ const CreateAuction = () => {
             console.error('Error checking Stripe status:', statusError);
             setSellerVerificationStatus('pending');
           }
-        } else if (userData.stripe_charges_enabled) {
-          setSellerVerificationStatus('verified');
         } else {
-          setSellerVerificationStatus('pending');
+          // Onboarding complete; check live status from Stripe to decide
+          try {
+            const response = await fetch('/api/stripe/check-account-status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ accountId: userData.stripe_account_id })
+            });
+            const result = await response.json();
+            if (response.ok) {
+              setSellerVerificationStatus(result.chargesEnabled ? 'verified' : 'pending');
+            } else {
+              setSellerVerificationStatus('pending');
+            }
+          } catch (e) {
+            setSellerVerificationStatus('pending');
+          }
         }
 
       } catch (error) {

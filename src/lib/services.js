@@ -359,8 +359,9 @@ export const auctionService = {
     // Transform data to match current format
     return data.map(auction => {
       // Handle image URL properly - check if we have image_urls first, then fallback to image_url
-      let primaryImage = auction.image_url;
+      let primaryImage = null;
       
+      // First try to get from image_urls (JSONB array)
       if (auction.image_urls) {
         try {
           const imageUrls = typeof auction.image_urls === 'string' 
@@ -368,12 +369,20 @@ export const auctionService = {
             : auction.image_urls;
           
           if (Array.isArray(imageUrls) && imageUrls.length > 0) {
-            primaryImage = imageUrls[0];
+            // Filter out null/empty values and get the first valid image
+            const validImages = imageUrls.filter(url => url && typeof url === 'string' && url.trim() !== '');
+            if (validImages.length > 0) {
+              primaryImage = validImages[0];
+            }
           }
         } catch (parseError) {
           console.error('Error parsing image_urls in getAuctions:', parseError);
-          // Keep using auction.image_url as fallback
         }
+      }
+      
+      // Fallback to single image_url if no valid images from image_urls
+      if (!primaryImage && auction.image_url) {
+        primaryImage = auction.image_url;
       }
       
       return {
@@ -427,6 +436,12 @@ export const auctionService = {
     if (error) throw error;
     
     // Parse image URLs properly
+    console.log('🔍 getAuctionById - Image data from database:', {
+      image_url: data.image_url,
+      image_urls: data.image_urls,
+      image_urls_type: typeof data.image_urls
+    });
+    
     let images = [];
     if (data.image_urls) {
       try {
@@ -434,6 +449,7 @@ export const auctionService = {
         images = typeof data.image_urls === 'string' 
           ? JSON.parse(data.image_urls) 
           : data.image_urls;
+        console.log('🔍 Parsed image_urls:', images);
       } catch (parseError) {
         console.error('Error parsing image_urls:', parseError);
         // Fallback to treating as array or single image
@@ -445,8 +461,10 @@ export const auctionService = {
     if (!images || images.length === 0) {
       if (data.image_url) {
         images = [data.image_url];
+        console.log('🔍 Using single image_url:', images);
       } else {
         images = ["https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop"];
+        console.log('🔍 Using placeholder image');
       }
     }
 
@@ -457,6 +475,8 @@ export const auctionService = {
       validImages.push("https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop");
     }
     
+    console.log('🔍 Final valid images:', validImages);
+    
     const auction = {
       id: data.id,
       title: data.title,
@@ -465,9 +485,14 @@ export const auctionService = {
         ? Math.max(...data.bids.map(b => b.amount))
         : data.reserve || data.starting_bid || 0,
       reservePrice: data.reserve || 0,
+      starting_bid: data.starting_bid || 0,
+      startingPrice: data.starting_bid || 0, // Alias for backward compatibility
       reserveMet: data.bids?.some(b => b.amount >= (data.reserve || 0)) || false,
       startTime: data.start_at,
       endTime: data.end_at,
+      status: data.status,
+      totalBids: data.bids?.length || 0,
+      watchers: data.watchers_count || 0,
       seller: {
         id: data.seller_id,
         username: data.users?.user_profiles?.username,
@@ -494,6 +519,21 @@ export const auctionService = {
 
   // Create new auction
   async createAuction(auctionData) {
+    console.log('🔍 createAuction called with data:', {
+      title: auctionData.title,
+      reservePrice: auctionData.reservePrice,
+      startingPrice: auctionData.startingPrice,
+      category: auctionData.category,
+      condition: auctionData.condition,
+      images: auctionData.images,
+      additionalRequirements: auctionData.additionalRequirements,
+      returnConditions: auctionData.returnConditions,
+      requireVerifiedPhone: auctionData.requireVerifiedPhone,
+      requireMinRating: auctionData.requireMinRating,
+      minRating: auctionData.minRating,
+      blockUnpaidBuyers: auctionData.blockUnpaidBuyers
+    });
+    
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
@@ -555,8 +595,12 @@ export const auctionService = {
     const startDateTime = new Date(`${auctionData.startDate}T${auctionData.startTime}`);
     const durationInDays = parseFloat(auctionData.duration);
     
+    // Ensure minimum duration of 1 hour
+    const minDurationInDays = 1 / 24; // 1 hour in days
+    const actualDurationInDays = Math.max(durationInDays, minDurationInDays);
+    
     // Convert days to milliseconds with better precision
-    const durationInMs = Math.round(durationInDays * 24 * 60 * 60 * 1000);
+    const durationInMs = Math.round(actualDurationInDays * 24 * 60 * 60 * 1000);
     const endDateTime = new Date(startDateTime.getTime() + durationInMs);
     
     // Ensure end time is after start time
@@ -575,25 +619,39 @@ export const auctionService = {
       timeDiff: endDateTime.getTime() - startDateTime.getTime()
     });
 
+    // Prepare the auction data for insertion
+    const reservePrice = parseFloat(auctionData.reservePrice) || 0;
+    const startingBid = parseFloat(auctionData.startingPrice) || reservePrice || 0;
+    
+    const auctionInsertData = {
+      seller_id: user.id,
+      title: auctionData.title,
+      description: auctionData.description,
+      reserve: reservePrice,
+      starting_bid: startingBid,
+      start_at: startDateTime.toISOString(),
+      end_at: endDateTime.toISOString(),
+      category: auctionData.category,
+      condition: auctionData.condition,
+      shipping_method: auctionData.shippingMethod,
+      shipping_cost: auctionData.shippingCost ? parseFloat(auctionData.shippingCost) : null,
+      location: auctionData.itemLocation || 'Singapore',
+      return_policy: auctionData.returnPolicy,
+      return_conditions: auctionData.returnConditions,
+      require_verified_phone: auctionData.requireVerifiedPhone || false,
+      require_min_rating: auctionData.requireMinRating || false,
+      min_rating: auctionData.minRating ? parseFloat(auctionData.minRating) : 0,
+      block_unpaid_buyers: auctionData.blockUnpaidBuyers || false,
+      additional_requirements: auctionData.additionalRequirements || null,
+      status: 'active'
+    };
+
+    console.log('🔍 About to insert auction data:', auctionInsertData);
+
     // Now create the auction
     const { data: auction, error } = await supabase
       .from('auctions')
-      .insert({
-        seller_id: user.id,
-        title: auctionData.title,
-        description: auctionData.description,
-        reserve: parseFloat(auctionData.reservePrice) || 0,
-        starting_bid: parseFloat(auctionData.reservePrice) || 0,
-        start_at: startDateTime.toISOString(),
-        end_at: endDateTime.toISOString(),
-        category: auctionData.category,
-        condition: auctionData.condition,
-        shipping_method: auctionData.shippingMethod,
-        shipping_cost: auctionData.shippingCost ? parseFloat(auctionData.shippingCost) : null,
-        location: auctionData.itemLocation || 'Singapore',
-        return_policy: auctionData.returnPolicy,
-        status: 'active'
-      })
+      .insert(auctionInsertData)
       .select()
       .single();
 
@@ -603,9 +661,17 @@ export const auctionService = {
     }
 
     // Upload images if provided
+    console.log('🔍 Image upload check:', {
+      hasImages: !!(auctionData.images && auctionData.images.length > 0),
+      imageCount: auctionData.images?.length || 0,
+      images: auctionData.images
+    });
+    
     if (auctionData.images && auctionData.images.length > 0) {
       try {
+        console.log('📸 Starting image upload...');
         const imageUrls = await imageService.uploadImages(auctionData.images, auction.id);
+        console.log('📸 Image upload successful:', imageUrls);
         
         // Update auction with primary image URL
         const { error: updateError } = await supabase
@@ -616,13 +682,34 @@ export const auctionService = {
           })
           .eq('id', auction.id);
           
-        if (updateError) throw updateError;
+        if (updateError) {
+          console.error('❌ Failed to update auction with image URLs:', updateError);
+          throw updateError;
+        }
         
+        console.log('✅ Successfully updated auction with image URLs');
         auction.image_url = imageUrls[0];
         auction.image_urls = imageUrls;
       } catch (imageError) {
-        console.error('Image upload failed:', imageError);
+        console.error('❌ Image upload failed:', imageError);
         // Don't fail auction creation if image upload fails
+      }
+    } else {
+      console.log('📸 No images provided, setting placeholder image');
+      // Set default placeholder image if no images provided
+      const placeholderImage = "https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop";
+      const { error: updateError } = await supabase
+        .from('auctions')
+        .update({ 
+          image_url: placeholderImage,
+          image_urls: [placeholderImage]
+        })
+        .eq('id', auction.id);
+        
+      if (updateError) {
+        console.error('❌ Failed to set placeholder image:', updateError);
+      } else {
+        console.log('✅ Successfully set placeholder image');
       }
     }
 

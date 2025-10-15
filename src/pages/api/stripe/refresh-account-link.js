@@ -15,11 +15,22 @@ export default async function handler(req, res) {
       });
     }
 
+    // Resolve absolute site URL
+    const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
+    const proto = (req.headers['x-forwarded-proto'] || req.headers['x-forwarded-protocol'] || 'http').toString().split(',')[0];
+    const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().split(',')[0];
+    const fallbackUrl = host ? `${proto}://${host}` : null;
+    const siteUrl = (envUrl && /^https?:\/\//i.test(envUrl)) ? envUrl.replace(/\/$/, '') : (fallbackUrl ? fallbackUrl.replace(/\/$/, '') : null);
+
+    if (!siteUrl) {
+      return res.status(500).json({ error: 'Server misconfiguration: NEXT_PUBLIC_SITE_URL not set and unable to infer host' });
+    }
+
     // Create a new account link for the existing account
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller-onboarding/refresh?account_id=${accountId}`,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller-onboarding/complete?account_id=${accountId}`,
+      refresh_url: `${siteUrl}/seller-onboarding/refresh?account_id=${accountId}`,
+      return_url: `${siteUrl}/seller-onboarding/complete?account_id=${accountId}`,
       type: 'account_onboarding',
       collect: 'eventually_due'
     });

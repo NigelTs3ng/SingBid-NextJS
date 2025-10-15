@@ -44,6 +44,37 @@ export default async function handler(req, res) {
       });
     }
 
+    // Resolve absolute site URL for Stripe redirects
+    const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
+    const proto = (req.headers['x-forwarded-proto'] || req.headers['x-forwarded-protocol'] || 'http').toString().split(',')[0];
+    const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().split(',')[0];
+    const fallbackUrl = host ? `${proto}://${host}` : null;
+    let siteUrl = (envUrl && /^https?:\/\//i.test(envUrl)) ? envUrl.replace(/\/$/, '') : (fallbackUrl ? fallbackUrl.replace(/\/$/, '') : null);
+
+    // Fallback to localhost if nothing else works
+    if (!siteUrl) {
+      siteUrl = 'http://localhost:3000';
+    }
+
+    // Ensure URL is properly formatted for Stripe
+    siteUrl = siteUrl.trim();
+    if (!siteUrl.startsWith('http://') && !siteUrl.startsWith('https://')) {
+      siteUrl = `http://${siteUrl}`;
+    }
+
+    console.log('🔍 URL Debug Info:', {
+      envUrl,
+      proto,
+      host,
+      fallbackUrl,
+      siteUrl,
+      headers: {
+        'x-forwarded-proto': req.headers['x-forwarded-proto'],
+        'x-forwarded-host': req.headers['x-forwarded-host'],
+        'host': req.headers.host
+      }
+    });
+
     // Create Stripe Express account with pre-filled information
     const account = await stripe.accounts.create({
       type: type, // 'express' or 'standard'
@@ -75,7 +106,7 @@ export default async function handler(req, res) {
       },
       business_profile: {
         mcc: '5999', // Miscellaneous retail stores
-        url: process.env.NEXT_PUBLIC_APP_URL || 'https://singbid.com',
+        url: 'https://singbid.com', // Use a real domain for business profile
       },
       metadata: {
         user_id: userId,
@@ -85,10 +116,19 @@ export default async function handler(req, res) {
     });
 
     // Create account link for onboarding
+    const refreshUrl = `${siteUrl}/seller-onboarding/refresh?account_id=${account.id}`;
+    const returnUrl = `${siteUrl}/seller-onboarding/complete?account_id=${account.id}`;
+    
+    console.log('🔗 Creating Stripe Account Link with URLs:', {
+      refreshUrl,
+      returnUrl,
+      accountId: account.id
+    });
+
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
-      refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller-onboarding/refresh?account_id=${account.id}`,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller-onboarding/complete?account_id=${account.id}`,
+      refresh_url: refreshUrl,
+      return_url: returnUrl,
       type: 'account_onboarding',
       collect: 'eventually_due'
     });
@@ -99,7 +139,6 @@ export default async function handler(req, res) {
       .update({
         stripe_account_id: account.id,
         stripe_onboarding_complete: false,
-        stripe_onboarding_started_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
       .eq('id', userId);
@@ -126,7 +165,14 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Error creating Stripe Connect account:', error);
+    console.error('❌ Error creating Stripe Connect account:', error);
+    console.error('❌ Error details:', {
+      type: error.type,
+      code: error.code,
+      param: error.param,
+      message: error.message,
+      raw: error.raw
+    });
     
     // Handle specific Stripe errors
     if (error.type === 'StripeCardError') {
@@ -139,7 +185,9 @@ export default async function handler(req, res) {
     if (error.type === 'StripeInvalidRequestError') {
       return res.status(400).json({ 
         error: 'Invalid request to Stripe',
-        message: error.message 
+        message: error.message,
+        code: error.code,
+        param: error.param
       });
     }
 

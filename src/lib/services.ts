@@ -112,17 +112,35 @@ export const auctionService = {
   },
 
   // Create a new auction
-  async createAuction(auctionData: Omit<AuctionInsert, 'seller_id'>) {
+  async createAuction(auctionData: any) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
+    // Map form data to database columns
+    const mappedData = {
+      seller_id: user.id,
+      title: auctionData.title,
+      description: auctionData.description,
+      reserve: parseFloat(auctionData.reservePrice) || 0,
+      starting_bid: parseFloat(auctionData.reservePrice) || 0,
+      category: auctionData.category,
+      condition: auctionData.condition,
+      shipping_method: auctionData.shippingMethod,
+      shipping_cost: auctionData.shippingCost ? parseFloat(auctionData.shippingCost) : null,
+      location: auctionData.itemLocation || 'Singapore',
+      return_policy: auctionData.returnPolicy,
+      return_conditions: auctionData.returnConditions,
+      require_verified_phone: auctionData.requireVerifiedPhone || false,
+      require_min_rating: auctionData.requireMinRating || false,
+      min_rating: auctionData.minRating ? parseFloat(auctionData.minRating) : 0,
+      block_unpaid_buyers: auctionData.blockUnpaidBuyers || false,
+      additional_requirements: auctionData.additionalRequirements || null,
+      status: 'active'
+    }
+
     const { data, error } = await supabase
       .from('auctions')
-      .insert({
-        ...auctionData,
-        seller_id: user.id,
-        current_price: auctionData.starting_price || 0
-      })
+      .insert(mappedData)
       .select()
       .single()
 
@@ -172,7 +190,7 @@ export const auctionService = {
     // Get current auction data
     const { data: auction, error: auctionError } = await supabase
       .from('auctions')
-      .select('current_price, status, end_time, seller_id')
+      .select('id, status, end_at, seller_id, reserve, starting_bid')
       .eq('id', auctionId)
       .single()
 
@@ -186,7 +204,16 @@ export const auctionService = {
     console.log('✅ [SERVICE] Auction data retrieved:', auction)
     console.log('📊 [SERVICE] Auction status check:', auction.status)
     console.log('⏰ [SERVICE] Time check - end_time:', auction.end_time, 'current:', new Date().toISOString())
-    console.log('💰 [SERVICE] Price check - current:', auction.current_price, 'bid:', amount)
+    // Get current highest bid to check against
+    const { data: currentBids } = await supabase
+      .from('bids')
+      .select('amount')
+      .eq('auction_id', auctionId)
+      .order('amount', { ascending: false })
+      .limit(1)
+    
+    const currentHighestBid = currentBids?.[0]?.amount || auction.reserve || auction.starting_bid || 0
+    console.log('💰 [SERVICE] Price check - current highest bid:', currentHighestBid, 'bid:', amount)
     console.log('👥 [SERVICE] Owner check - seller_id:', auction.seller_id, 'bidder_id:', user.id)
 
     if (auction.status !== 'active') {
@@ -199,9 +226,9 @@ export const auctionService = {
       throw new Error('Auction has ended')
     }
     
-    if (amount <= auction.current_price) {
+    if (amount <= currentHighestBid) {
       console.log('❌ [SERVICE] Bid amount too low')
-      throw new Error('Bid must be higher than current price')
+      throw new Error(`Bid must be higher than current bid of ${currentHighestBid}`)
     }
 
     if (auction.seller_id === user.id) {
@@ -229,11 +256,8 @@ export const auctionService = {
     }
 
     console.log('🔄 [SERVICE] Updating auction current price...')
-    // Update auction current price
-    const { error: updateError } = await supabase
-      .from('auctions')
-      .update({ current_price: amount })
-      .eq('id', auctionId)
+    // Note: We don't need to update current_price as it doesn't exist in the schema
+    // The current bid is calculated from the bids table
 
     console.log('📈 [SERVICE] Auction update result, error:', updateError)
 
