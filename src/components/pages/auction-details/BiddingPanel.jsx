@@ -68,7 +68,24 @@ const BiddingPanel = ({ auction, currentBid, onPlaceBid, isAuthenticated }) => {
     minBidAmount + 50
   ] : [];
 
-  if (auction?.status === 'ended') {
+  // Check if auction has actually ended by time or status
+  const isAuctionEnded = () => {
+    // Check database status first
+    if (auction?.status === 'ended' || auction?.status === 'completed') {
+      return true;
+    }
+    
+    // Check if auction end time has passed
+    if (auction?.endTime) {
+      const now = new Date();
+      const endTime = new Date(auction.endTime);
+      return now >= endTime;
+    }
+    
+    return false;
+  };
+
+  if (isAuctionEnded()) {
     return (
       <div className="bg-card border border-border rounded-lg p-6">
         <div className="text-center">

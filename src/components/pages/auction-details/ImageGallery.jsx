@@ -6,10 +6,21 @@ const ImageGallery = ({ images, title }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
 
+  // Debug logging for images
+  console.log('🖼️ ImageGallery - Received props:', {
+    images,
+    imagesType: typeof images,
+    imagesLength: images?.length,
+    isArray: Array.isArray(images),
+    title
+  });
+
   // Ensure we have a valid images array
   const validImages = Array.isArray(images) && images.length > 0 
     ? images 
     : ["https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop"];
+
+  console.log('🖼️ ImageGallery - Valid images after processing:', validImages);
 
   const nextImage = () => {
     setCurrentImageIndex((prev) => (prev + 1) % validImages?.length);

@@ -120,7 +120,6 @@ CREATE TABLE IF NOT EXISTS public.auctions (
     model VARCHAR(100),
     
     -- Images
-    image_url TEXT,
     image_urls JSONB DEFAULT '[]'::jsonb,
     
     -- Shipping & Location

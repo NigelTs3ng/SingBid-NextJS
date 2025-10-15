@@ -106,7 +106,6 @@ CREATE TABLE auctions (
   model VARCHAR(100),
   
   -- Images
-  image_url TEXT,
   image_urls JSONB DEFAULT '[]'::jsonb,
   
   -- Shipping & Location

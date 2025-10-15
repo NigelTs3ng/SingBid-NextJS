@@ -56,7 +56,16 @@ const AuctionDetails = () => {
     setError(null);
     
     try {
+      console.log('🔍 AUCTION DETAILS - Fetching auction data for ID:', auctionId);
       const auctionData = await auctionService.getAuctionById(auctionId);
+      console.log('🔍 AUCTION DETAILS - Raw auction data received:', auctionData);
+      console.log('🔍 AUCTION DETAILS - Images in auction data:', {
+        images: auctionData.images,
+        imagesType: typeof auctionData.images,
+        imagesLength: auctionData.images?.length,
+        firstImage: auctionData.images?.[0]
+      });
+      
       setAuction(auctionData);
       setCurrentBid(auctionData.currentBid);
     } catch (err) {

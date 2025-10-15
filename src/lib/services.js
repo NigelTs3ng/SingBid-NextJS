@@ -358,10 +358,9 @@ export const auctionService = {
     
     // Transform data to match current format
     return data.map(auction => {
-      // Handle image URL properly - check if we have image_urls first, then fallback to image_url
+      // Handle images from image_urls JSONB array
       let primaryImage = null;
       
-      // First try to get from image_urls (JSONB array)
       if (auction.image_urls) {
         try {
           const imageUrls = typeof auction.image_urls === 'string' 
@@ -380,21 +379,28 @@ export const auctionService = {
         }
       }
       
-      // Fallback to single image_url if no valid images from image_urls
-      if (!primaryImage && auction.image_url) {
-        primaryImage = auction.image_url;
+      // Use placeholder if no valid images found
+      if (!primaryImage) {
+        primaryImage = "https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop";
       }
+      
+      // Calculate current bid from bids array
+      const currentBid = auction.bids?.length > 0 
+        ? Math.max(...auction.bids.map(b => b.amount))
+        : auction.starting_bid || auction.reserve || 0;
       
       return {
         id: auction.id,
         title: auction.title,
         description: auction.description,
-        currentBid: auction.bids?.length > 0 
-          ? Math.max(...auction.bids.map(b => b.amount))
-          : auction.reserve || auction.starting_bid || 0,
-        reservePrice: auction.reserve || 0,
+        currentBid: currentBid,
+        starting_bid: auction.starting_bid || 0,
+        startingPrice: auction.starting_bid || 0, // Alias for component compatibility
+        reserve: auction.reserve || 0,
+        reservePrice: auction.reserve || 0, // Alias for component compatibility
+        reserveMet: auction.bids?.some(b => b.amount >= (auction.reserve || 0)) || false,
         timeRemaining: calculateTimeRemaining(auction.end_at),
-        image: primaryImage || "https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop",
+        image: primaryImage,
         seller: {
           name: auction.users?.user_profiles?.username || 'Unknown',
           rating: auction.users?.user_profiles?.rating_average || 0,
@@ -402,9 +408,19 @@ export const auctionService = {
         },
         totalBids: auction.bids?.length || 0,
         category: auction.category || 'General',
+        condition: auction.condition || 'Used',
+        location: auction.location || 'Singapore',
         views: auction.views || 0,
         shippingIncluded: auction.shipping_included || false,
-        featured: auction.featured || false
+        shippingInfo: getShippingInfo(auction),
+        featured: auction.featured || false,
+        status: auction.status,
+        // Map shipping details properly
+        shipping_method: auction.shipping_method,
+        shipping_cost: auction.shipping_cost,
+        // Add fields that components expect
+        authenticated: false, // Add authentication verification logic if needed
+        watchers: auction.watchers_count || 0
       };
     });
   },
@@ -435,84 +451,169 @@ export const auctionService = {
 
     if (error) throw error;
     
-    // Parse image URLs properly
-    console.log('🔍 getAuctionById - Image data from database:', {
-      image_url: data.image_url,
+    // Parse image URLs from image_urls JSONB field with better error handling
+    console.log('🔍 getAuctionById - Raw database response:', {
+      id: data.id,
+      title: data.title,
       image_urls: data.image_urls,
-      image_urls_type: typeof data.image_urls
+      image_urls_type: typeof data.image_urls,
+      image_urls_raw: JSON.stringify(data.image_urls)
     });
     
     let images = [];
+    
+    // Handle image_urls JSONB array with comprehensive parsing
     if (data.image_urls) {
       try {
-        // If image_urls is a string, parse it as JSON
-        images = typeof data.image_urls === 'string' 
-          ? JSON.parse(data.image_urls) 
-          : data.image_urls;
-        console.log('🔍 Parsed image_urls:', images);
+        // Handle different possible formats of image_urls
+        if (Array.isArray(data.image_urls)) {
+          images = [...data.image_urls]; // Create a copy
+          console.log('🔍 image_urls is already an array:', images);
+        } else if (typeof data.image_urls === 'string') {
+          // Try to parse as JSON if it's a string
+          const parsed = JSON.parse(data.image_urls);
+          images = Array.isArray(parsed) ? parsed : [parsed];
+          console.log('🔍 Parsed string image_urls:', images);
+        } else if (typeof data.image_urls === 'object' && data.image_urls !== null) {
+          // If it's already an object/array from JSONB
+          images = Array.isArray(data.image_urls) ? data.image_urls : [data.image_urls];
+          console.log('🔍 Object image_urls converted to array:', images);
+        }
       } catch (parseError) {
-        console.error('Error parsing image_urls:', parseError);
-        // Fallback to treating as array or single image
-        images = Array.isArray(data.image_urls) ? data.image_urls : [data.image_urls];
+        console.error('❌ Error parsing image_urls:', parseError);
+        console.log('🔍 Raw image_urls value that failed:', data.image_urls);
+        // Fallback: treat as single image if it's a string URL, otherwise empty
+        images = (typeof data.image_urls === 'string' && data.image_urls.startsWith('http')) 
+          ? [data.image_urls] 
+          : [];
       }
+    } else {
+      console.log('🔍 No image_urls in database, using placeholder');
     }
     
-    // Fallback to single image_url if no image_urls array
-    if (!images || images.length === 0) {
-      if (data.image_url) {
-        images = [data.image_url];
-        console.log('🔍 Using single image_url:', images);
-      } else {
-        images = ["https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop"];
-        console.log('🔍 Using placeholder image');
-      }
-    }
-
-    // Ensure all image URLs are valid
-    const validImages = images.filter(url => url && typeof url === 'string' && url.trim() !== '');
+    // Filter out invalid/empty URLs and ensure all URLs are strings
+    const validImages = images
+      .filter(url => url && typeof url === 'string' && url.trim() !== '' && url !== 'null' && url !== 'undefined')
+      .map(url => url.trim());
     
-    if (validImages.length === 0) {
-      validImages.push("https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop");
-    }
+    console.log('🔍 Valid images after filtering:', validImages);
     
-    console.log('🔍 Final valid images:', validImages);
+    // ALWAYS ensure we have at least one image (placeholder)
+    const finalImages = validImages.length > 0 
+      ? validImages 
+      : ["https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop"];
+    
+    console.log('🔍 Final images array that will be returned:', finalImages);
     
     const auction = {
       id: data.id,
       title: data.title,
       description: data.description,
+      
+      // Current bid calculation
       currentBid: data.bids?.length > 0 
         ? Math.max(...data.bids.map(b => b.amount))
-        : data.reserve || data.starting_bid || 0,
-      reservePrice: data.reserve || 0,
+        : data.starting_bid || data.reserve || 0,
+      
+      // Price fields - provide both naming conventions
+      reserve: data.reserve || 0,
+      reservePrice: data.reserve || 0, // Alias for component compatibility
       starting_bid: data.starting_bid || 0,
-      startingPrice: data.starting_bid || 0, // Alias for backward compatibility
+      startingPrice: data.starting_bid || 0, // Alias for component compatibility
       reserveMet: data.bids?.some(b => b.amount >= (data.reserve || 0)) || false,
+      
+      // Timing
       startTime: data.start_at,
       endTime: data.end_at,
-      status: data.status,
+      
+      // Status - map database status to component expectations
+      status: data.status === 'completed' ? 'ended' : data.status,
+      
+      // Counts
       totalBids: data.bids?.length || 0,
       watchers: data.watchers_count || 0,
+      views: data.views || 0,
+      
+      // Seller information
       seller: {
         id: data.seller_id,
         username: data.users?.user_profiles?.username,
+        name: data.users?.user_profiles?.username, // Alias for compatibility
+        
+        // Profile image mapping
         profileImage: data.users?.user_profiles?.profile_image,
+        avatar: data.users?.user_profiles?.profile_image, // Alias for SellerInfo component
+        
+        // Rating and reviews
         rating: data.users?.user_profiles?.rating_average || 0,
-        verified: true
+        totalReviews: data.users?.user_profiles?.rating_count || 0,
+        
+        // Verification status
+        verified: true, // Can be enhanced with actual verification logic
+        isVerified: data.users?.kyc_status === 'verified' || false,
+        isKYCVerified: data.users?.kyc_status === 'verified' || false,
+        
+        // Premium status
+        isPremium: data.users?.is_pro || false,
+        
+        // Member information
+        memberSince: data.users?.created_at,
+        
+        // Social stats
+        followers: data.users?.user_profiles?.followers_count || 0,
+        
+        // Profile details
+        bio: data.users?.user_profiles?.bio,
+        badges: data.users?.user_profiles?.badges || [],
+        
+        // Calculated fields (these would need separate queries in production)
+        totalAuctions: 0, // TODO: Calculate from auctions count
+        successRate: 95 // TODO: Calculate actual success rate
       },
+      
+      // Bid history
       bids: includeBids ? (data.bids?.map(bid => ({
         id: bid.id,
         amount: bid.amount,
         timestamp: bid.created_at,
         bidder: bid.users?.user_profiles?.username || 'Anonymous'
       })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)) || []) : [],
-      images: validImages,
+      
+      // Images array from image_urls JSONB field - GUARANTEED to have at least one image
+      images: finalImages,
+      
+      // Item details
       category: data.category || 'General',
-      condition: data.condition || 'New',
+      condition: data.condition || 'Used',
       location: data.location || 'Singapore',
-      shippingOptions: data.shipping_options || ['Standard Delivery'],
-      returnPolicy: data.return_policy || '7 days return policy'
+      
+      // Shipping information - map database fields properly
+      shippingOptions: data.shipping_method ? [data.shipping_method] : ['Standard Delivery'],
+      shippingInfo: getShippingInfo(data),
+      shipping_method: data.shipping_method,
+      shipping_cost: data.shipping_cost,
+      shippingIncluded: data.shipping_included || false,
+      
+      // Policies
+      returnPolicy: data.return_policy || '7 days return policy',
+      return_conditions: data.return_conditions,
+      
+      // Additional fields that components expect
+      authenticated: false, // Can be enhanced with actual authentication verification
+      featured: data.featured || false,
+      
+      // Winner information (if auction is completed)
+      winner: data.outcomes?.[0]?.winner_id ? 
+        data.outcomes[0].winner_id : null
     };
+
+    // Final verification log
+    console.log('🔍 FINAL AUCTION OBJECT - Images check:', {
+      images: auction.images,
+      imagesType: typeof auction.images,
+      imagesLength: auction.images?.length,
+      firstImage: auction.images?.[0]
+    });
 
     return auction;
   },
@@ -673,11 +774,10 @@ export const auctionService = {
         const imageUrls = await imageService.uploadImages(auctionData.images, auction.id);
         console.log('📸 Image upload successful:', imageUrls);
         
-        // Update auction with primary image URL
+        // Update auction with image URLs array only (no more single image_url field)
         const { error: updateError } = await supabase
           .from('auctions')
           .update({ 
-            image_url: imageUrls[0],
             image_urls: imageUrls // Store all image URLs as JSON array
           })
           .eq('id', auction.id);
@@ -688,7 +788,6 @@ export const auctionService = {
         }
         
         console.log('✅ Successfully updated auction with image URLs');
-        auction.image_url = imageUrls[0];
         auction.image_urls = imageUrls;
       } catch (imageError) {
         console.error('❌ Image upload failed:', imageError);
@@ -701,7 +800,6 @@ export const auctionService = {
       const { error: updateError } = await supabase
         .from('auctions')
         .update({ 
-          image_url: placeholderImage,
           image_urls: [placeholderImage]
         })
         .eq('id', auction.id);
@@ -862,6 +960,25 @@ export const auctionService = {
     return payment;
   }
 };
+
+// Helper function to format shipping information
+function getShippingInfo(auction) {
+  if (!auction) return 'Shipping info not available';
+  
+  const method = auction.shipping_method || 'pickup';
+  const cost = auction.shipping_cost;
+  const included = auction.shipping_included;
+  
+  if (method === 'pickup') {
+    return 'Pickup only';
+  }
+  
+  if (included || !cost) {
+    return `${method} - Free shipping`;
+  }
+  
+  return `${method} - S$${cost?.toFixed(2)}`;
+}
 
 // Utility function to calculate time remaining
 function calculateTimeRemaining(endTime) {

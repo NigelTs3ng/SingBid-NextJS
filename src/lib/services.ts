@@ -70,8 +70,8 @@ export const auctionService = {
         return { hours, minutes, seconds }
       }
 
-      // Handle image URL properly
-      let primaryImage = auction.image_url
+      // Handle images from image_urls JSONB array
+      let primaryImage = null
       
       if (auction.image_urls) {
         try {
@@ -80,11 +80,20 @@ export const auctionService = {
             : auction.image_urls
           
           if (Array.isArray(imageUrls) && imageUrls.length > 0) {
-            primaryImage = imageUrls[0]
+            // Filter out null/empty values and get the first valid image
+            const validImages = imageUrls.filter(url => url && typeof url === 'string' && url.trim() !== '')
+            if (validImages.length > 0) {
+              primaryImage = validImages[0]
+            }
           }
         } catch (parseError) {
           console.error('Error parsing image_urls:', parseError)
         }
+      }
+      
+      // Use placeholder if no valid images found
+      if (!primaryImage) {
+        primaryImage = "https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop"
       }
       
       return {
@@ -96,7 +105,7 @@ export const auctionService = {
           : auction.reserve || auction.starting_bid || 0,
         reservePrice: auction.reserve || 0,
         timeRemaining: calculateTimeRemaining(auction.end_at),
-        image: primaryImage || "https://images.unsplash.com/photo-1560472355-536de3962603?w=400&h=300&fit=crop",
+        image: primaryImage,
         seller: {
           name: auction.users?.user_profiles?.username || 'Unknown',
           rating: auction.users?.user_profiles?.rating_average || 0,
