@@ -110,22 +110,8 @@ export default function SignupPage() {
       }
 
       if (data.user) {
-        // Create user record in our users table
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert([
-            {
-              id: data.user.id,
-              email: formData.email,
-              name: formData.name.trim(),
-            }
-          ]);
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
-          // Even if profile creation fails, auth was successful
-        }
-
+        // User profile will be automatically created by database trigger
+        
         // Check if email confirmation is required
         if (!data.session) {
           // Email confirmation required

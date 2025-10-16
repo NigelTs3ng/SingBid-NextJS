@@ -283,6 +283,30 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Function to handle new user registration
+CREATE OR REPLACE FUNCTION public.handle_new_user() 
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.users (id, email, name)
+    VALUES (
+        NEW.id,
+        NEW.email,
+        COALESCE(NEW.raw_user_meta_data->>'name', NEW.email)
+    );
+    RETURN NEW;
+EXCEPTION
+    WHEN others THEN
+        -- If there's an error (like duplicate), just return NEW to not block the signup
+        RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create trigger for new user signup
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
 -- Insert sample data (optional - remove if not needed)
 -- INSERT INTO public.users (id, email, name) VALUES 
 --     ('550e8400-e29b-41d4-a716-446655440001', 'seller@example.com', 'John Seller'),
