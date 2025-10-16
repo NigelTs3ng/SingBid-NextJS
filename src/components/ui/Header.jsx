@@ -1,9 +1,11 @@
 "use client";
 import React, { useState, useRef, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
 import Icon from '../AppIcon';
 import Button from './Button';
 import Image from '../AppImage';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Header = () => {
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
@@ -11,6 +13,7 @@ const Header = () => {
   const dropdownRef = useRef(null);
   const router = useRouter();
   const pathname = usePathname();
+  const { user, userProfile, loading, signOut } = useAuth();
 
   const navigationItems = [
     { label: 'Home', path: '/home-page', icon: 'Home' },
@@ -50,6 +53,102 @@ const Header = () => {
   const isActivePath = (path) => {
     return pathname === path;
   };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.push('/');
+      setIsAccountDropdownOpen(false);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  // Authenticated user account items
+  const authenticatedAccountItems = [
+    { label: 'Payment Dashboard', path: '/payment-dashboard', icon: 'CreditCard' },
+    { label: 'Subscription', path: '/subscription-management', icon: 'Crown' },
+    { label: 'Profile Settings', path: '/profile', icon: 'User' },
+    { label: 'Help & Support', path: '/help', icon: 'HelpCircle' },
+  ];
+
+  // Authentication buttons for non-authenticated users
+  const AuthButtons = () => (
+    <div className="flex items-center space-x-3">
+      <Link href="/auth/login">
+        <Button variant="ghost" size="sm">
+          Sign In
+        </Button>
+      </Link>
+      <Link href="/auth/signup">
+        <Button size="sm">
+          Sign Up
+        </Button>
+      </Link>
+    </div>
+  );
+
+  // User profile section for authenticated users
+  const UserProfile = () => (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
+        className="flex items-center space-x-2 p-2 rounded-lg hover:bg-accent transition-colors duration-200"
+      >
+        <div className="w-8 h-8 singbid-gradient rounded-full flex items-center justify-center singbid-shadow">
+          <Icon name="User" size={16} color="white" />
+        </div>
+        <div className="hidden sm:flex flex-col items-start">
+          <span className="text-sm font-medium text-foreground">
+            {userProfile?.name || user?.email?.split('@')[0]}
+          </span>
+          <span className="text-xs text-muted-foreground">{user?.email}</span>
+        </div>
+        <Icon 
+          name="ChevronDown" 
+          size={16} 
+          className={`transition-transform duration-200 ${isAccountDropdownOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {isAccountDropdownOpen && (
+        <div className="absolute right-0 mt-2 w-56 bg-popover border border-border rounded-lg singbid-shadow-lg animate-fade-in">
+          <div className="py-2">
+            {/* User info header */}
+            <div className="px-4 py-2 border-b border-border">
+              <p className="text-sm font-medium text-popover-foreground">
+                {userProfile?.name || 'User'}
+              </p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
+            </div>
+            
+            {/* Account menu items */}
+            {authenticatedAccountItems?.map((item) => (
+              <button
+                key={item?.path}
+                onClick={() => handleNavigation(item?.path)}
+                className="w-full flex items-center space-x-3 px-4 py-2 text-sm text-popover-foreground hover:bg-accent transition-colors duration-150"
+              >
+                <Icon name={item?.icon} size={16} />
+                <span>{item?.label}</span>
+              </button>
+            ))}
+            
+            {/* Sign out button */}
+            <div className="border-t border-border mt-1 pt-1">
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center space-x-3 px-4 py-2 text-sm text-popover-foreground hover:bg-accent transition-colors duration-150"
+              >
+                <Icon name="LogOut" size={16} />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   const Logo = () => (
     <div className="flex items-center space-x-3">
@@ -94,42 +193,15 @@ const Header = () => {
             ))}
           </nav>
 
-          {/* Desktop Account Dropdown */}
-          <div className="hidden md:flex items-center space-x-4">
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
-                className="flex items-center space-x-2 p-2 rounded-lg hover:bg-accent transition-colors duration-200"
-              >
-                <div className="w-8 h-8 singbid-gradient rounded-full flex items-center justify-center singbid-shadow">
-                  <Icon name="User" size={16} color="white" />
-                </div>
-                <Icon 
-                  name="ChevronDown" 
-                  size={16} 
-                  className={`transition-transform duration-200 ${isAccountDropdownOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-
-              {isAccountDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-popover border border-border rounded-lg singbid-shadow-lg animate-fade-in">
-                  <div className="py-2">
-                    {accountItems?.map((item, index) => (
-                      <button
-                        key={item?.path}
-                        onClick={() => handleNavigation(item?.path)}
-                        className={`w-full flex items-center space-x-3 px-4 py-2 text-sm text-popover-foreground hover:bg-accent transition-colors duration-150 ${
-                          index === accountItems?.length - 1 ? 'border-t border-border mt-1 pt-3' : ''
-                        }`}
-                      >
-                        <Icon name={item?.icon} size={16} />
-                        <span>{item?.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+          {/* Desktop Auth Section */}
+          <div className="hidden md:flex items-center">
+            {loading ? (
+              <div className="w-8 h-8 animate-pulse bg-muted rounded-full"></div>
+            ) : user ? (
+              <UserProfile />
+            ) : (
+              <AuthButtons />
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -141,6 +213,7 @@ const Header = () => {
           </button>
         </div>
       </header>
+
       {/* Mobile Navigation Panel */}
       {isMobileMenuOpen && (
         <>
@@ -160,6 +233,41 @@ const Header = () => {
             </div>
 
             <div className="flex flex-col p-4 space-y-2">
+              {/* Mobile Auth Section */}
+              {!loading && (
+                <div className="mb-4 pb-4 border-b border-border">
+                  {user ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-3 p-3 bg-accent rounded-lg">
+                        <div className="w-10 h-10 singbid-gradient rounded-full flex items-center justify-center">
+                          <Icon name="User" size={20} color="white" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {userProfile?.name || 'User'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{user?.email}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Link href="/auth/login" className="block">
+                        <Button variant="outline" fullWidth onClick={() => setIsMobileMenuOpen(false)}>
+                          Sign In
+                        </Button>
+                      </Link>
+                      <Link href="/auth/signup" className="block">
+                        <Button fullWidth onClick={() => setIsMobileMenuOpen(false)}>
+                          Sign Up
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Navigation Items */}
               {navigationItems?.map((item) => (
                 <button
                   key={item?.path}
@@ -175,21 +283,31 @@ const Header = () => {
                 </button>
               ))}
 
-              <div className="border-t border-border pt-4 mt-4">
-                <h3 className="text-sm font-semibold text-muted-foreground mb-2 px-3">Account</h3>
-                {accountItems?.map((item, index) => (
+              {/* Authenticated user menu items in mobile */}
+              {user && (
+                <div className="border-t border-border pt-4 mt-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-2 px-3">Account</h3>
+                  {authenticatedAccountItems?.map((item) => (
+                    <button
+                      key={item?.path}
+                      onClick={() => handleNavigation(item?.path)}
+                      className="w-full flex items-center space-x-3 p-3 rounded-lg text-left transition-colors duration-200 text-foreground hover:bg-accent"
+                    >
+                      <Icon name={item?.icon} size={20} />
+                      <span>{item?.label}</span>
+                    </button>
+                  ))}
+                  
+                  {/* Mobile Sign Out */}
                   <button
-                    key={item?.path}
-                    onClick={() => handleNavigation(item?.path)}
-                    className={`w-full flex items-center space-x-3 p-3 rounded-lg text-left transition-colors duration-200 text-foreground hover:bg-accent ${
-                      index === accountItems?.length - 1 ? 'border-t border-border mt-2 pt-3' : ''
-                    }`}
+                    onClick={handleSignOut}
+                    className="w-full flex items-center space-x-3 p-3 rounded-lg text-left transition-colors duration-200 text-foreground hover:bg-accent border-t border-border mt-2 pt-3"
                   >
-                    <Icon name={item?.icon} size={20} />
-                    <span>{item?.label}</span>
+                    <Icon name="LogOut" size={20} />
+                    <span>Sign Out</span>
                   </button>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </>

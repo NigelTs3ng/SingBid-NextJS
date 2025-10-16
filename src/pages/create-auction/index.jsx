@@ -129,22 +129,63 @@ const CreateAuction = () => {
     setIsSubmitting(true);
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock successful submission
-      console.log('Auction submitted:', { formData, images });
+      // Validate all steps before submission
+      for (let step = 1; step <= 4; step++) {
+        if (!validateStep(step)) {
+          setCurrentStep(step);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Prepare auction data
+      const auctionData = {
+        title: formData.title,
+        description: formData.description,
+        category_id: formData.category, // Assuming category contains the UUID
+        condition: formData.condition,
+        starting_price: parseFloat(formData.reservePrice),
+        reserve_price: parseFloat(formData.reservePrice),
+        start_time: new Date(`${formData.startDate}T${formData.startTime}`).toISOString(),
+        end_time: new Date(new Date(`${formData.startDate}T${formData.startTime}`).getTime() + 
+          parseInt(formData.duration) * 24 * 60 * 60 * 1000).toISOString(),
+        seller_id: 'temp-user-id', // Replace with actual user ID from auth
+        location: formData.itemLocation,
+        shipping_cost: parseFloat(formData.shippingCost) || 0,
+        shipping_methods: [formData.shippingMethod],
+        return_policy: formData.returnPolicy,
+        return_conditions: formData.returnConditions,
+        require_verified_phone: formData.requireVerifiedPhone,
+        require_min_rating: formData.requireMinRating,
+        min_rating: parseFloat(formData.minRating) || 0,
+        block_unpaid_buyers: formData.blockUnpaidBuyers,
+        additional_requirements: formData.additionalRequirements,
+        status: 'active', // or 'draft' if you want to allow draft auctions
+        images: images.filter(img => !img.error && !img.uploading) // Only include successfully uploaded images
+      };
+
+      // Create auction with images
+      const response = await fetch('/api/auctions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(auctionData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to create auction');
+      }
+
+      console.log('Auction created successfully:', result);
       
       // Navigate to success page or auction listings
-      router.push('/auction-listings', { 
-        state: { 
-          message: 'Auction created successfully! It will be live shortly.',
-          type: 'success'
-        }
-      });
+      router.push('/auction-listings?success=true');
     } catch (error) {
       console.error('Submission error:', error);
-      setErrors({ submit: 'Failed to create auction. Please try again.' });
+      setErrors({ submit: error.message || 'Failed to create auction. Please try again.' });
     } finally {
       setIsSubmitting(false);
     }
