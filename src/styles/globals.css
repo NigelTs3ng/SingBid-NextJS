@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Core Colors - SingBid Theme */
+    --color-background: #FEFEFE; /* warm white */
+    --color-foreground: #1E1E1E; /* near black */
+    --color-border: #F0F0F0; /* light gray */
+    --color-input: #FFFFFF; /* white */
+    --color-ring: #DC2626; /* red-600 */
+    
+    /* Card Colors */
+    --color-card: #FFFFFF; /* white */
+    --color-card-foreground: #1E1E1E; /* near black */
+    
+    /* Popover Colors */
+    --color-popover: #FFFFFF; /* white */
+    --color-popover-foreground: #1E1E1E; /* near black */
+    
+    /* Muted Colors */
+    --color-muted: #F8F8F8; /* very light gray */
+    --color-muted-foreground: #6B7280; /* gray-500 */
+    
+    /* Primary Colors - Red Theme */
+    --color-primary: #DC2626; /* red-600 */
+    --color-primary-foreground: #FFFFFF; /* white */
+    
+    /* Secondary Colors */
+    --color-secondary: #374151; /* gray-700 */
+    --color-secondary-foreground: #FFFFFF; /* white */
+    
+    /* Accent Colors - Complementary Red Tones */
+    --color-accent: #FEF2F2; /* red-50 */
+    --color-accent-foreground: #DC2626; /* red-600 */
+    
+    /* Success Colors */
+    --color-success: #059669; /* emerald-600 */
+    --color-success-foreground: #FFFFFF; /* white */
+    
+    /* Warning Colors */
+    --color-warning: #D97706; /* amber-600 */
+    --color-warning-foreground: #FFFFFF; /* white */
+    
+    /* Error/Destructive Colors */
+    --color-error: #DC2626; /* red-600 */
+    --color-error-foreground: #FFFFFF; /* white */
+    --color-destructive: #DC2626; /* red-600 */
+    --color-destructive-foreground: #FFFFFF; /* white */
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+    line-height: normal;
+    font-family: inherit;
+    margin: unset;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    margin: 0;
+    padding: 0;
+    font-family: Inter;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  /* SingBid Custom Utilities */
+  .singbid-gradient {
+    background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+  }
+  
+  .singbid-shadow {
+    box-shadow: 0 4px 14px 0 rgba(220, 38, 38, 0.1);
+  }
+  
+  .singbid-shadow-lg {
+    box-shadow: 0 10px 25px -3px rgba(220, 38, 38, 0.1), 0 4px 6px -2px rgba(220, 38, 38, 0.05);
+  }
+}
