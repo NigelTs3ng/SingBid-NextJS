@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Core Colors - BidWin Theme */
+    --bidwin-blue: #0038FF; /* primary from logo */
+    --bidwin-red:  #FF1E1E; /* accent from logo */
+
+    --color-background: #FFFFFF;
+    --color-foreground: #1E1E1E;
+    --color-border: #EDEDED;
+    --color-input: #FFFFFF;
+    --color-ring: var(--bidwin-blue);
+    
+    /* Card Colors */
+    --color-card: #FFFFFF;
+    --color-card-foreground: #1E1E1E;
+    
+    /* Popover Colors */
+    --color-popover: #FFFFFF;
+    --color-popover-foreground: #1E1E1E;
+    
+    /* Muted Colors */
+    --color-muted: #F5F7FB; /* subtle bluish gray */
+    --color-muted-foreground: #6B7280;
+    
+    /* Primary / Accent */
+    --color-primary: var(--bidwin-blue);
+    --color-primary-foreground: #FFFFFF;
+
+    --color-secondary: #111827; /* near-black for contrast blocks */
+    --color-secondary-foreground: #FFFFFF;
+    
+    /* Accent uses a soft tint for hovers, with red as foreground */
+    --color-accent: #FFF4F4; /* soft red tint */
+    --color-accent-foreground: var(--bidwin-red);
+    
+    /* Status Colors */
+    --color-success: #10B981;
+    --color-success-foreground: #FFFFFF;
+    --color-warning: #F59E0B;
+    --color-warning-foreground: #FFFFFF;
+    --color-error: #EF4444;
+    --color-error-foreground: #FFFFFF;
+    --color-destructive: #EF4444;
+    --color-destructive-foreground: #FFFFFF;
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+    line-height: normal;
+    font-family: inherit;
+    margin: unset;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    margin: 0;
+    padding: 0;
+    font-family: Inter;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  /* BidWin Custom Utilities */
+  .bidwin-gradient {
+    background: linear-gradient(135deg, var(--bidwin-blue) 0%, var(--bidwin-red) 100%);
+  }
+  
+  .bidwin-shadow {
+    box-shadow: 0 4px 14px 0 rgba(0, 56, 255, 0.12);
+  }
+  
+  .bidwin-shadow-lg {
+    box-shadow: 0 10px 25px -3px rgba(0, 56, 255, 0.15), 0 4px 6px -2px rgba(255, 30, 30, 0.08);
+  }
+}
